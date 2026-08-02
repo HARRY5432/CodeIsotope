@@ -1,0 +1,40 @@
+{
+  "name": "reporadar",
+  "version": "0.1.0",
+  "description": "Finds the mature, battle-tested repos your AI-written codebase reinvented by hand.",
+  "keywords": [
+    "ai",
+    "codebase",
+    "dependencies",
+    "oss",
+    "github",
+    "claude-code",
+    "opencode",
+    "cursor"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "bin": {
+    "reporadar": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "dev": "node src/cli.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {}
+}

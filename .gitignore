@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.reporadar-cache/
+.DS_Store
+
+# local AI session transcripts -- may contain paths and tokens
+claude-session-*.md
