@@ -1,0 +1,73 @@
+import { JS, type Detector } from '../detector-types.ts';
+
+/** Retry, rate limiting, concurrency, caching -- the things AI writes inline instead of importing. */
+export const RESILIENCE_DETECTORS: Detector[] = [
+  {
+    id: 'retry-backoff',
+    capability: 'retry with exponential backoff',
+    ext: JS,
+    signals: [
+      { name: 'retry-vocab', re: /\b(maxRetries|max_retries|retryCount|retries|attempt|attempts)\b/ },
+      { name: 'backoff-math', re: /Math\.pow\(\s*2|2\s*\*\*\s*(attempt|i|n|retry)|\bbackoff\b|\bjitter\b/i },
+      { name: 'sleep', re: /setTimeout\s*\(|await\s+sleep\s*\(|await\s+delay\s*\(/ },
+      { name: 'loop', re: /\bfor\s*\(|\bwhile\s*\(/ },
+    ],
+    minSignals: 3,
+    required: ['retry-vocab', 'backoff-math'],
+    searchTerms: ['retry exponential backoff', 'promise retry library'],
+    knownSolutions: ['p-retry', 'async-retry', 'cockatiel', 'exponential-backoff'],
+    suppressIfDeps: ['p-retry', 'async-retry', 'cockatiel', 'exponential-backoff', 'retry', 'axios-retry', 'got', 'ky'],
+    note: 'Hand-rolled retry usually misses jitter, per-error retry decisions, AbortSignal support, and retry budgets.',
+    baseConfidence: 'medium',
+  },
+  {
+    id: 'rate-limiter',
+    capability: 'rate limiting / request throttling',
+    ext: JS,
+    signals: [
+      { name: 'rl-vocab', re: /\b(rateLimit|rateLimiter|tokenBucket|leakyBucket|requestsPerSecond|quota)\b/i },
+      { name: 'window-math', re: /\b(windowMs|windowStart|refill|tokens|bucket)\b/ },
+      { name: 'timestamp-filter', re: /\.filter\(\s*\(?\s*\w+\s*\)?\s*=>\s*\w+\s*>\s*(now|Date\.now)/ },
+    ],
+    minSignals: 2,
+    required: ['rl-vocab'],
+    searchTerms: ['rate limiter node library', 'token bucket rate limit'],
+    knownSolutions: ['bottleneck', 'rate-limiter-flexible', 'p-ratelimit', 'limiter'],
+    suppressIfDeps: ['bottleneck', 'rate-limiter-flexible', 'p-ratelimit', 'limiter', 'express-rate-limit', '@upstash/ratelimit'],
+    baseConfidence: 'medium',
+  },
+  {
+    id: 'concurrency-pool',
+    capability: 'bounded-concurrency task pool',
+    ext: JS,
+    signals: [
+      { name: 'limit-vocab', re: /\b(concurrency|concurrencyLimit|poolSize|maxConcurrent|workers|inFlight)\b/ },
+      { name: 'promise-combinator', re: /Promise\.(all|allSettled|race)\(/ },
+      { name: 'queue-drain', re: /\.shift\(\)|cursor\+\+|index\+\+|next\(\)/ },
+    ],
+    minSignals: 3,
+    required: ['limit-vocab'],
+    searchTerms: ['p-limit bounded concurrency', 'promise pool library'],
+    knownSolutions: ['p-limit', 'p-map', 'p-queue', 'piscina'],
+    suppressIfDeps: ['p-limit', 'p-map', 'p-queue', 'p-all', 'piscina', 'bottleneck', 'fastq'],
+    baseConfidence: 'medium',
+  },
+  {
+    id: 'ttl-cache',
+    capability: 'in-memory cache with expiry / LRU eviction',
+    ext: JS,
+    signals: [
+      { name: 'map-store', re: /new Map\s*\(|new WeakMap\s*\(/ },
+      { name: 'now', re: /Date\.now\(\)|performance\.now\(\)/ },
+      { name: 'ttl-vocab', re: /\b(ttl|expires|expiresAt|expiry|maxAge|staleAt|cacheTime)\b/i },
+      { name: 'eviction', re: /\b(evict|lru|maxSize|maxEntries)\b/i },
+    ],
+    minSignals: 3,
+    required: ['ttl-vocab'],
+    searchTerms: ['lru cache with ttl node'],
+    knownSolutions: ['lru-cache', 'quick-lru', '@isaacs/ttlcache'],
+    suppressIfDeps: ['lru-cache', 'quick-lru', '@isaacs/ttlcache', 'node-cache', 'keyv', 'cacheable', 'tiny-lru'],
+    note: 'Hand-rolled TTL maps usually leak: entries are only evicted when read, so cold keys pin memory forever.',
+    baseConfidence: 'medium',
+  },
+];
