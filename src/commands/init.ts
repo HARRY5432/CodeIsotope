@@ -97,7 +97,7 @@ export async function runInit(opts: InitOptions): Promise<InitResult> {
 }
 
 function buildReport(installed: InitResult['installed'], notes: string[]): string {
-  const lines: string[] = ['RepoRadar installed.', ''];
+  const lines: string[] = ['CodeIsotope installed.', ''];
   for (const entry of installed) {
     const label = targetByKey(entry.target)?.label ?? entry.target;
     const verb =
@@ -113,8 +113,8 @@ function buildReport(installed: InitResult['installed'], notes: string[]): strin
   if (notes.length > 0) lines.push('');
   const wrote = installed.some((i) => i.action === 'created' || i.action === 'updated');
   if (wrote) {
-    lines.push('Next: open your AI coding CLI in this project and run  /reporadar');
-    lines.push('Or use it directly:  npx reporadar scan');
+    lines.push('Next: open your AI coding CLI in this project and run  /codeisotope');
+    lines.push('Or use it directly:  npx codeisotope scan');
   }
   return lines.join('\n');
 }

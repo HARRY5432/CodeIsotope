@@ -151,7 +151,7 @@ export function maintainerSuggestion(reason: string | undefined): { name: string
 }
 
 /**
- * Search terms describing the capability, for the host model to pass to `reporadar vet`.
+ * Search terms describing the capability, for the host model to pass to `codeisotope vet`.
  *
  * Deliberately *not* used to auto-select a replacement. Finding a functional equivalent is semantic
  * judgement: npm search ranks on text relevance, so querying a package's own description reliably

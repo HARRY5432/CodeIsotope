@@ -9,7 +9,7 @@ import { walkSource } from '../src/scan/walk.ts';
 import { githubSlug } from '../src/vet/npm.ts';
 
 async function fixture(files: Record<string, string>): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'reporadar-test-'));
+  const root = await mkdtemp(join(tmpdir(), 'codeisotope-test-'));
   for (const [rel, content] of Object.entries(files)) {
     const path = join(root, rel);
     await mkdir(join(path, '..'), { recursive: true });

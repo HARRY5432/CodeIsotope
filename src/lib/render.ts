@@ -25,7 +25,7 @@ const CONFIDENCE_MARK: Record<string, string> = {
 export function renderFingerprint(fp: Fingerprint): string {
   const out: string[] = [];
   const langs = fp.languages.slice(0, 4).map((l) => `${l.name} ${l.share}%`).join(', ') || 'none detected';
-  out.push(bold('RepoRadar scan'));
+  out.push(bold('CodeIsotope scan'));
   out.push(dim(`${fp.scanned.files} files, ${(fp.scanned.bytes / 1024).toFixed(0)} KB, ${fp.scanned.durationMs} ms`));
   out.push(dim(`languages: ${langs}`));
   out.push(dim(`manifests: ${fp.manifests.map((m) => m.file).join(', ') || 'none'} | direct deps: ${fp.deps.direct.length}`));
@@ -74,7 +74,7 @@ function renderCandidate(pkg: PackageEvidence, index: number): string[] {
 
 export function renderVetReport(report: VetReport): string {
   const out: string[] = [];
-  out.push(bold(`RepoRadar vet: ${report.query}`));
+  out.push(bold(`CodeIsotope vet: ${report.query}`));
   out.push(dim(`ecosystem: ${report.ecosystem} | candidates: ${report.candidates.length}`));
   out.push('');
   for (const note of report.notes) out.push(`  ${yellow('note')} ${note}`);
@@ -103,7 +103,7 @@ function renderDep(dep: AuditedDep): string[] {
     out.push(`            ${cyan(s.builtIn ? `maintainer says use ${s.name} -- drop the dependency` : `maintainer says use: ${s.name}`)}`);
   }
   if (dep.searchTerms && dep.searchTerms.length > 0) {
-    out.push(dim(`            find a replacement: reporadar vet "${dep.searchTerms[0]}"`));
+    out.push(dim(`            find a replacement: codeisotope vet "${dep.searchTerms[0]}"`));
   }
   out.push('');
   return out;
@@ -112,7 +112,7 @@ function renderDep(dep: AuditedDep): string[] {
 export function renderAuditReport(report: AuditReport): string {
   const out: string[] = [];
   const t = report.totals;
-  out.push(bold('RepoRadar audit'));
+  out.push(bold('CodeIsotope audit'));
   out.push(dim(`${t.audited} direct dependencies | ecosystem: ${report.ecosystem}`));
   const summary = [
     t.replace > 0 ? red(`${t.replace} replace`) : '',

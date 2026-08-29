@@ -21,7 +21,7 @@ export interface Detector {
   required?: string[];
   /** Signals that are conclusive on their own, regardless of minSignals. */
   decisive?: string[];
-  /** Queries handed to `reporadar vet`. */
+  /** Queries handed to `codeisotope vet`. */
   searchTerms: string[];
   /** Packages already known to solve this, seeded into vetting. */
   knownSolutions: string[];

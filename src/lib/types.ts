@@ -26,7 +26,7 @@ export interface ReinventionCandidate {
   /** Named signals that fired, for explainability. */
   signalsHit: string[];
   confidence: Confidence;
-  /** Feed these to `reporadar vet` to gather evidence. */
+  /** Feed these to `codeisotope vet` to gather evidence. */
   searchTerms: string[];
   /** Well-known packages that already solve this, seeded for vetting. */
   knownSolutions: string[];
@@ -138,7 +138,7 @@ export interface AuditedDep {
    * `builtIn` means the answer is to delete the dependency, not swap it.
    */
   maintainerSuggestion?: { name: string; builtIn: boolean };
-  /** Feed these to `reporadar vet` to find and prove a replacement. Only set for weak/replace. */
+  /** Feed these to `codeisotope vet` to find and prove a replacement. Only set for weak/replace. */
   searchTerms?: string[];
 }
 

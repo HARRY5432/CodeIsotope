@@ -115,7 +115,7 @@ export async function vet(query: string, opts: VetOptions = {}): Promise<VetRepo
   const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))].slice(0, limit);
   if (unique.length === 0) {
     notes.push('No candidate packages found for this query.');
-    return { tool: { name: 'reporadar', version: TOOL_VERSION }, query, ecosystem, generatedAt: new Date().toISOString(), candidates: [], notes };
+    return { tool: { name: 'codeisotope', version: TOOL_VERSION }, query, ecosystem, generatedAt: new Date().toISOString(), candidates: [], notes };
   }
 
   const candidates = await gatherEvidence(unique, ecosystem);
@@ -133,5 +133,5 @@ export async function vet(query: string, opts: VetOptions = {}): Promise<VetRepo
     notes.push('Running unauthenticated against the GitHub API (60 requests/hour). Set GITHUB_TOKEN or run `gh auth login` for 5,000/hour and more complete evidence.');
   }
 
-  return { tool: { name: 'reporadar', version: TOOL_VERSION }, query, ecosystem, generatedAt: new Date().toISOString(), candidates, notes };
+  return { tool: { name: 'codeisotope', version: TOOL_VERSION }, query, ecosystem, generatedAt: new Date().toISOString(), candidates, notes };
 }

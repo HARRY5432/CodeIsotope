@@ -1,10 +1,10 @@
 /**
- * The prompt installed as /reporadar into whichever AI coding CLI the developer uses.
+ * The prompt installed as /codeisotope into whichever AI coding CLI the developer uses.
  *
  * Division of labour: the binary produces facts (what the code does, what the registry and
  * GitHub say about candidates), the host model produces judgement (is this really a
  * reinvention, and is replacing it worth the churn). The model must never invent a package --
- * every recommendation has to come back from `reporadar vet`.
+ * every recommendation has to come back from `codeisotope vet`.
  *
  * {{ARGS}} is replaced with each CLI's own argument placeholder at install time.
  */
@@ -20,10 +20,10 @@ Focus area (optional, may be empty): {{ARGS}}
 Run:
 
 \`\`\`
-npx --yes reporadar scan --json
+npx --yes codeisotope scan --json
 \`\`\`
 
-If a focus area was given, pass it as the path: \`npx --yes reporadar scan <path> --json\`.
+If a focus area was given, pass it as the path: \`npx --yes codeisotope scan <path> --json\`.
 
 The output lists \`candidates\`: places where a well-known solved problem looks hand-implemented. Each carries a \`file\`, \`lines\`, \`excerpts\`, \`signalsHit\`, \`confidence\`, \`knownSolutions\` and often a \`note\`. Treat these as leads, not conclusions.
 
@@ -42,7 +42,7 @@ Discard candidates that do not survive this. Say how many you discarded and why 
 Run:
 
 \`\`\`
-npx --yes reporadar audit --json
+npx --yes codeisotope audit --json
 \`\`\`
 
 This grades every direct dependency and returns a \`verdict\` per package:
@@ -61,7 +61,7 @@ This grades every direct dependency and returns a \`verdict\` per package:
 For each surviving scan candidate, and each \`replace\`/\`weak\` dependency worth acting on:
 
 \`\`\`
-npx --yes reporadar vet "<capability>" --seed <knownSolution> --seed <knownSolution> --json
+npx --yes codeisotope vet "<capability>" --seed <knownSolution> --seed <knownSolution> --json
 \`\`\`
 
 This returns real data for each package -- weekly downloads, last commit, release cadence, contributor concentration, published advisories, licence, OpenSSF Scorecard -- plus a 0-100 health score and \`flags\`.

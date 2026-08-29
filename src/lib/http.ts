@@ -8,14 +8,14 @@ import { USER_AGENT } from './version.ts';
  * Deliberately dependency-free.
  *
  * Yes, this file hand-rolls retry/backoff and a concurrency gate -- exactly the kind of thing
- * RepoRadar tells you to stop hand-rolling. The trade is intentional: `npx reporadar` has to
+ * CodeIsotope tells you to stop hand-rolling. The trade is intentional: `npx codeisotope` has to
  * install in under a second and carry zero supply-chain surface, so the runtime dep count is 0.
  * That constraint does not apply to the projects we scan, which is the whole point.
  */
 
 const CACHE_DIR =
-  process.env.REPORADAR_CACHE_DIR ??
-  join(process.env.XDG_CACHE_HOME ?? join(homedir() || tmpdir(), '.cache'), 'reporadar');
+  process.env.CODEISOTOPE_CACHE_DIR ??
+  join(process.env.XDG_CACHE_HOME ?? join(homedir() || tmpdir(), '.cache'), 'codeisotope');
 
 const DEFAULT_TTL_MS = 6 * 60 * 60 * 1000; // 6h -- repo health does not change by the minute.
 

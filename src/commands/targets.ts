@@ -2,7 +2,7 @@ import { BRIEF_BODY, BRIEF_DESCRIPTION } from '../templates/brief.ts';
 import { TOOL_VERSION } from '../lib/version.ts';
 
 /** Lets us recognise our own generated file and update it without --force. */
-export const MARKER = 'reporadar:generated';
+export const MARKER = 'codeisotope:generated';
 
 export interface Target {
   key: string;
@@ -18,7 +18,7 @@ export interface Target {
 
 function yamlFrontmatter(fields: Record<string, string>, body: string): string {
   const lines = Object.entries(fields).map(([k, v]) => `${k}: ${v}`);
-  return `---\n${lines.join('\n')}\n---\n\n<!-- ${MARKER} v${TOOL_VERSION} -- regenerate with: npx reporadar init --force -->\n\n${body}\n`;
+  return `---\n${lines.join('\n')}\n---\n\n<!-- ${MARKER} v${TOOL_VERSION} -- regenerate with: npx codeisotope init --force -->\n\n${body}\n`;
 }
 
 /**
@@ -35,13 +35,13 @@ export const TARGETS: Target[] = [
     key: 'claude',
     label: 'Claude Code',
     detectDir: '.claude',
-    file: '.claude/commands/reporadar.md',
+    file: '.claude/commands/codeisotope.md',
     argsToken: '$ARGUMENTS',
     render: (body) =>
       yamlFrontmatter(
         {
           description: BRIEF_DESCRIPTION,
-          'allowed-tools': 'Bash(npx --yes reporadar:*), Bash(reporadar:*), Read, Grep, Glob',
+          'allowed-tools': 'Bash(npx --yes codeisotope:*), Bash(codeisotope:*), Read, Grep, Glob',
         },
         body,
       ),
@@ -50,7 +50,7 @@ export const TARGETS: Target[] = [
     key: 'opencode',
     label: 'opencode',
     detectDir: '.opencode',
-    file: '.opencode/commands/reporadar.md',
+    file: '.opencode/commands/codeisotope.md',
     argsToken: '$ARGUMENTS',
     render: (body) => yamlFrontmatter({ description: BRIEF_DESCRIPTION }, body),
   },
@@ -58,7 +58,7 @@ export const TARGETS: Target[] = [
     key: 'cursor',
     label: 'Cursor',
     detectDir: '.cursor',
-    file: '.cursor/commands/reporadar.md',
+    file: '.cursor/commands/codeisotope.md',
     argsToken: '$ARGUMENTS',
     render: (body) => `# ${BRIEF_DESCRIPTION}\n\n<!-- ${MARKER} v${TOOL_VERSION} -->\n\n${body}\n`,
   },
@@ -66,7 +66,7 @@ export const TARGETS: Target[] = [
     key: 'gemini',
     label: 'Gemini CLI',
     detectDir: '.gemini',
-    file: '.gemini/commands/reporadar.toml',
+    file: '.gemini/commands/codeisotope.toml',
     argsToken: '{{args}}',
     render: (body) =>
       `# ${MARKER} v${TOOL_VERSION}
@@ -80,7 +80,7 @@ ${tomlLiteral(body)}
     key: 'windsurf',
     label: 'Windsurf',
     detectDir: '.windsurf',
-    file: '.windsurf/workflows/reporadar.md',
+    file: '.windsurf/workflows/codeisotope.md',
     argsToken: '$ARGUMENTS',
     render: (body) => yamlFrontmatter({ description: BRIEF_DESCRIPTION }, body),
   },
@@ -88,7 +88,7 @@ ${tomlLiteral(body)}
     key: 'copilot',
     label: 'GitHub Copilot',
     detectDir: '.github',
-    file: '.github/prompts/reporadar.prompt.md',
+    file: '.github/prompts/codeisotope.prompt.md',
     argsToken: '${input:focus}',
     render: (body) => yamlFrontmatter({ mode: 'agent', description: BRIEF_DESCRIPTION }, body),
   },

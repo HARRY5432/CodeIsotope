@@ -32,22 +32,22 @@ const OPTIONS = {
   'fail-on': { type: 'string' },
 } as const;
 
-const HELP = `reporadar ${TOOL_VERSION} -- find the mature repos your codebase reinvented by hand.
+const HELP = `codeisotope ${TOOL_VERSION} -- find the mature repos your codebase reinvented by hand.
 
 USAGE
-  reporadar init [--target claude,opencode,cursor,gemini,windsurf,copilot] [--all] [--force] [--dry-run]
-      Install the /reporadar slash command into every AI coding CLI it finds in this project.
+  codeisotope init [--target claude,opencode,cursor,gemini,windsurf,copilot] [--all] [--force] [--dry-run]
+      Install the /codeisotope slash command into every AI coding CLI it finds in this project.
 
-  reporadar scan [path] [--json] [--only <ids>] [--limit N] [--max-files N] [--include-suppressed]
+  codeisotope scan [path] [--json] [--only <ids>] [--limit N] [--max-files N] [--include-suppressed]
       Fingerprint the codebase and list capabilities that look hand-rolled.
 
-  reporadar audit [path] [--json] [--dev] [--only <names>] [--limit N] [--fail-on <verdict>]
+  codeisotope audit [path] [--json] [--dev] [--only <names>] [--limit N] [--fail-on <verdict>]
       Grade the dependencies you already have: deprecated, archived, abandoned, or unlicensed.
 
-  reporadar vet <query> [--json] [--package <name>]... [--seed <name>]... [--ecosystem npm] [--limit N]
+  codeisotope vet <query> [--json] [--package <name>]... [--seed <name>]... [--ecosystem npm] [--limit N]
       Gather hard evidence on candidate packages: maintenance, adoption, bus factor, advisories, licence.
 
-  reporadar detectors            List every detector and what it looks for.
+  codeisotope detectors            List every detector and what it looks for.
 
 GLOBAL
   --json          Machine-readable output. This is what the slash command consumes.
@@ -57,7 +57,7 @@ GLOBAL
 AUDIT
   --dev                  Include devDependencies (graded more leniently than runtime deps).
   --fail-on <verdict>    Exit 3 if any dependency is this bad or worse: replace, weak, aging.
-  Audit states the problem and gives you search terms; run \`reporadar vet\` to prove a replacement.
+  Audit states the problem and gives you search terms; run \`codeisotope vet\` to prove a replacement.
 
 NOTES
   No API keys are required. GitHub requests use GITHUB_TOKEN, GH_TOKEN, or your local \`gh\` login
@@ -67,7 +67,7 @@ NOTES
 const VERDICT_ORDER: DepVerdict[] = ['healthy', 'aging', 'weak', 'replace'];
 
 function fail(message: string, code = 1): never {
-  process.stderr.write(`reporadar: ${message}\n`);
+  process.stderr.write(`codeisotope: ${message}\n`);
   process.exit(code);
 }
 
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
         const worst = worstVerdict(report);
         const threshold = VERDICT_ORDER.indexOf(failOn as DepVerdict);
         if (worst !== undefined && VERDICT_ORDER.indexOf(worst) >= threshold) {
-          process.stderr.write(`reporadar: worst dependency verdict is "${worst}", at or above --fail-on "${failOn}"\n`);
+          process.stderr.write(`codeisotope: worst dependency verdict is "${worst}", at or above --fail-on "${failOn}"\n`);
           process.exit(3);
         }
       }
@@ -180,7 +180,7 @@ async function main(): Promise<void> {
     }
 
     default:
-      fail(`unknown command "${command}". Run \`reporadar --help\`.`, 2);
+      fail(`unknown command "${command}". Run \`codeisotope --help\`.`, 2);
   }
 }
 

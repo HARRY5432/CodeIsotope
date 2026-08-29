@@ -161,7 +161,7 @@ test('the report is ordered worst-first, then by health score', () => {
 
 test('worstVerdict reports the single worst verdict present', () => {
   const base: Omit<AuditReport, 'deps'> = {
-    tool: { name: 'reporadar', version: '0.2.0' },
+    tool: { name: 'codeisotope', version: '0.2.0' },
     root: '/tmp/x',
     ecosystem: 'npm',
     generatedAt: iso(0),
@@ -178,7 +178,7 @@ test('worstVerdict reports the single worst verdict present', () => {
 });
 
 test('declaredDeps prefers the runtime declaration when a package is in both lists', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'reporadar-audit-'));
+  const dir = await mkdtemp(join(tmpdir(), 'codeisotope-audit-'));
   await writeFile(
     join(dir, 'package.json'),
     JSON.stringify({ dependencies: { alpha: '^1.0.0' }, devDependencies: { alpha: '^2.0.0', beta: '^3.0.0' } }),
@@ -193,7 +193,7 @@ test('declaredDeps prefers the runtime declaration when a package is in both lis
 
 test('a UTF-8 BOM does not make a project look dependency-free', async () => {
   // Windows editors write a BOM routinely, and JSON.parse throws on it.
-  const dir = await mkdtemp(join(tmpdir(), 'reporadar-bom-'));
+  const dir = await mkdtemp(join(tmpdir(), 'codeisotope-bom-'));
   await writeFile(join(dir, 'package.json'), `\uFEFF${JSON.stringify({ dependencies: { alpha: '^1.0.0' } })}`, 'utf8');
   const deps = declaredDeps(await readManifests(dir));
   assert.deepEqual(deps.map((d) => d.name), ['alpha']);
@@ -201,7 +201,7 @@ test('a UTF-8 BOM does not make a project look dependency-free', async () => {
 
 test('the rendered report leads with problems and lists healthy deps compactly', () => {
   const report: AuditReport = {
-    tool: { name: 'reporadar', version: '0.2.0' },
+    tool: { name: 'codeisotope', version: '0.2.0' },
     root: '/tmp/x',
     ecosystem: 'npm',
     generatedAt: iso(0),
@@ -222,7 +222,7 @@ test('the rendered report leads with problems and lists healthy deps compactly',
   const text = renderAuditReport(report);
   assert.match(text, /replace/);
   assert.match(text, /maintainer says use: undici/);
-  assert.match(text, /reporadar vet "http client"/);
+  assert.match(text, /codeisotope vet "http client"/);
   assert.match(text, /Healthy: lru-cache, papaparse/);
   assert.match(text, /Could not verify: private-thing/);
   assert.match(text, /a note/);

@@ -1,10 +1,12 @@
-# RepoRadar
+# CodeIsotope
 
 **Find the battle-tested open-source libraries your AI-written codebase reinvented by hand.**
 
+Isotopes are the same element in variants of differing stability — some stable, some decaying with a measurable half-life. Libraries are the same. `request` and `undici` are isotopes of "HTTP client"; one of them has not had a commit in 79 months. CodeIsotope measures which one you are holding.
+
 AI coding assistants write code. They rarely go looking for the mature, widely-adopted repository that already solved the problem — so codebases built with AI quietly accumulate hand-rolled retry loops, `JSON.parse(JSON.stringify())` clones, `Math.random()` session tokens, and `split(',')` CSV parsers. Each one works in the happy path and fails in production.
 
-RepoRadar closes that gap from both ends. It installs into your project as a `/reporadar` slash command for whichever AI coding CLI you already use, then:
+CodeIsotope closes that gap from both ends. It installs into your project as a `/codeisotope` slash command for whichever AI coding CLI you already use, then:
 
 - **`scan`** finds capabilities that look hand-implemented, and
 - **`audit`** grades the dependencies you already have — the deprecated, archived and quietly-abandoned ones no advisory will ever be filed against.
@@ -12,41 +14,41 @@ RepoRadar closes that gap from both ends. It installs into your project as a `/r
 Either way it gathers hard evidence on the libraries involved — maintenance, adoption, bus factor, published advisories, licence — so the recommendation is a fact, not a guess.
 
 ```
-npx reporadar init      # install the slash command into this project
-/reporadar              # run it from Claude Code, opencode, Cursor, Gemini CLI, Windsurf or Copilot
+npx codeisotope init      # install the slash command into this project
+/codeisotope              # run it from Claude Code, opencode, Cursor, Gemini CLI, Windsurf or Copilot
 ```
 
 ## Why it works this way
 
-RepoRadar is two halves with a hard line between them:
+CodeIsotope is two halves with a hard line between them:
 
 | | Does | Never does |
 |---|---|---|
-| **The binary** (`reporadar`) | Fingerprints the code, grades your dependencies, queries npm / GitHub / deps.dev / OpenSSF, scores health | Judge whether a finding is real, or pick a replacement |
+| **The binary** (`codeisotope`) | Fingerprints the code, grades your dependencies, queries npm / GitHub / deps.dev / OpenSSF, scores health | Judge whether a finding is real, or pick a replacement |
 | **The host model** (your AI CLI) | Reads the flagged code, confirms or discards each lead, chooses and vets replacements, writes the report | Invent a package from memory |
 
-That split is the whole design. The model supplies judgement — it can tell a real retry loop from an incidental `for` loop with a `setTimeout` in it. The binary supplies facts that cannot be hallucinated — every recommended package is verified to exist, with real download counts and a real last-commit date. The slash command tells the model, in as many words, never to recommend anything that did not come back from `reporadar vet`.
+That split is the whole design. The model supplies judgement — it can tell a real retry loop from an incidental `for` loop with a `setTimeout` in it. The binary supplies facts that cannot be hallucinated — every recommended package is verified to exist, with real download counts and a real last-commit date. The slash command tells the model, in as many words, never to recommend anything that did not come back from `codeisotope vet`.
 
-It also means **no API keys and no per-scan cost.** The intelligence is the LLM you are already paying for; every data source RepoRadar queries is free and unauthenticated.
+It also means **no API keys and no per-scan cost.** The intelligence is the LLM you are already paying for; every data source CodeIsotope queries is free and unauthenticated.
 
 ## Install
 
 ```bash
-npx reporadar init            # detects the AI CLIs configured in this project
-npx reporadar init --all      # install for every supported CLI
-npx reporadar init --dry-run  # show what would be written
+npx codeisotope init            # detects the AI CLIs configured in this project
+npx codeisotope init --all      # install for every supported CLI
+npx codeisotope init --dry-run  # show what would be written
 ```
 
 Supported targets, each in its own native format:
 
 | CLI | File |
 |---|---|
-| Claude Code | `.claude/commands/reporadar.md` |
-| opencode | `.opencode/commands/reporadar.md` |
-| Cursor | `.cursor/commands/reporadar.md` |
-| Gemini CLI | `.gemini/commands/reporadar.toml` |
-| Windsurf | `.windsurf/workflows/reporadar.md` |
-| GitHub Copilot | `.github/prompts/reporadar.prompt.md` |
+| Claude Code | `.claude/commands/codeisotope.md` |
+| opencode | `.opencode/commands/codeisotope.md` |
+| Cursor | `.cursor/commands/codeisotope.md` |
+| Gemini CLI | `.gemini/commands/codeisotope.toml` |
+| Windsurf | `.windsurf/workflows/codeisotope.md` |
+| GitHub Copilot | `.github/prompts/codeisotope.prompt.md` |
 
 With no CLI detected it installs for Claude Code and opencode and tells you it did. A command file you wrote yourself is never overwritten without `--force`.
 
@@ -55,18 +57,18 @@ With no CLI detected it installs for Claude Code and opencode and tells you it d
 The binary is useful on its own, and `--json` is what the slash command consumes.
 
 ```bash
-reporadar scan                      # fingerprint the current directory
-reporadar scan ./src --json         # machine-readable, scoped to a subtree
-reporadar scan --only csv-parsing,password-hashing
-reporadar scan --include-suppressed # report even capabilities you already have a library for
+codeisotope scan                      # fingerprint the current directory
+codeisotope scan ./src --json         # machine-readable, scoped to a subtree
+codeisotope scan --only csv-parsing,password-hashing
+codeisotope scan --include-suppressed # report even capabilities you already have a library for
 
-reporadar audit                     # grade every direct dependency
-reporadar audit --dev               # include devDependencies
-reporadar audit --fail-on replace   # exit 3 in CI if anything is deprecated/archived/abandoned
+codeisotope audit                     # grade every direct dependency
+codeisotope audit --dev               # include devDependencies
+codeisotope audit --fail-on replace   # exit 3 in CI if anything is deprecated/archived/abandoned
 
-reporadar vet "csv parser quoted fields" --seed papaparse --seed csv-parse
-reporadar vet --package lru-cache --package quick-lru
-reporadar detectors                 # list every detector and what it matches
+codeisotope vet "csv parser quoted fields" --seed papaparse --seed csv-parse
+codeisotope vet --package lru-cache --package quick-lru
+codeisotope detectors                 # list every detector and what it matches
 ```
 
 ### What a scan looks like
@@ -99,7 +101,7 @@ high    password hashing
 `scan` asks what you should have installed. `audit` asks whether what you already installed is rotting.
 
 ```
-RepoRadar audit
+CodeIsotope audit
 6 direct dependencies | ecosystem: npm
 4 replace | 2 healthy
 
@@ -107,7 +109,7 @@ RepoRadar audit
             deprecated by its maintainers: request has been deprecated, see .../issues/3142
             1 known advisory/advisories on the current version: GHSA-p8p7-x288-28g6
             no commits in 79 months -- effectively unmaintained
-            find a replacement: reporadar vet "Simplified HTTP client"
+            find a replacement: codeisotope vet "Simplified HTTP client"
 
   replace  left-pad@^1.3.0  F 25/100
             deprecated by its maintainers: use String.prototype.padStart()
@@ -149,7 +151,7 @@ Two rules keep the number honest:
 - **Unknown signals are dropped from the average, not counted as failures.** A package with no OpenSSF Scorecard is not penalised for it — the gap is reported in `gaps` instead. Tools that score missing data as zero systematically punish smaller, perfectly good libraries.
 - **Hard problems cap the score outright.** Deprecated caps at 25, archived at 30, a known advisory at 40 — so no amount of popularity can bury them. `async-retry` has 31 million downloads a week and still lands at D, because its last commit was three years ago.
 
-`pushed_at` is deliberately *not* treated as a commit date. It counts pushes to any branch, so a Dependabot push to a side branch makes an abandoned repo look fresh. RepoRadar reports the real default-branch commit history and says "last push to any branch" when that is all it has.
+`pushed_at` is deliberately *not* treated as a commit date. It counts pushes to any branch, so a Dependabot push to a side branch makes an abandoned repo look fresh. CodeIsotope reports the real default-branch commit history and says "last push to any branch" when that is all it has.
 
 ## Data sources
 
@@ -163,13 +165,13 @@ All free, all keyless, no account required:
 | [GitHub REST API](https://docs.github.com/rest) | Commits, releases, contributors, archived status |
 | [OpenSSF Scorecard](https://securityscorecards.dev) | Supply-chain security posture |
 
-GitHub is the only rate-limited one: 60 requests/hour unauthenticated, 5,000 with a token. RepoRadar picks up `GITHUB_TOKEN`, `GH_TOKEN`, or your local `gh auth login` automatically, and tells you in the report when it is running without one. Responses are cached on disk for 6 hours (`--no-cache` to bypass).
+GitHub is the only rate-limited one: 60 requests/hour unauthenticated, 5,000 with a token. CodeIsotope picks up `GITHUB_TOKEN`, `GH_TOKEN`, or your local `gh auth login` automatically, and tells you in the report when it is running without one. Responses are cached on disk for 6 hours (`--no-cache` to bypass).
 
 > **Note on Google Search:** the Google Custom Search JSON API is closed to new customers and shuts down on 1 January 2027, so it is not usable here. It also is not needed — GitHub and npm are the authoritative indexes for this problem, and the semantic half of the search is done by the LLM that is already running.
 
 ## Detectors
 
-22 detectors, ordered so security and correctness findings surface first. Run `reporadar detectors` for the full list with match rules.
+22 detectors, ordered so security and correctness findings surface first. Run `codeisotope detectors` for the full list with match rules.
 
 **Security** — insecure random IDs, fast-hash password hashing, hand-rolled JWTs, ad-hoc input validation
 **Correctness** — CSV via `split(',')`, `JSON.parse(JSON.stringify())` clones, naive semver comparison, regex slugifiers, manual date formatting, query-string building
@@ -183,7 +185,7 @@ Recommendations prefer platform built-ins over dependencies. If `structuredClone
 
 ## Development
 
-Zero runtime dependencies, so `npx reporadar` installs in under a second and carries no supply-chain surface.
+Zero runtime dependencies, so `npx codeisotope` installs in under a second and carries no supply-chain surface.
 
 ```bash
 npm install
@@ -193,7 +195,7 @@ npm run typecheck
 npm run build
 ```
 
-Requires Node 20.11+. `src/lib/http.ts` hand-rolls retry with backoff and a concurrency gate — precisely what this tool tells you not to do. That trade is deliberate and documented in the file: the zero-dependency constraint applies to a tool distributed by `npx`, not to the projects it scans. RepoRadar flags itself for it, which is the honest outcome.
+Requires Node 20.11+. `src/lib/http.ts` hand-rolls retry with backoff and a concurrency gate — precisely what this tool tells you not to do. That trade is deliberate and documented in the file: the zero-dependency constraint applies to a tool distributed by `npx`, not to the projects it scans. CodeIsotope flags itself for it, which is the honest outcome.
 
 ## Status
 

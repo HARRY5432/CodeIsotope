@@ -1,5 +1,5 @@
 {
-  "name": "reporadar",
+  "name": "codeisotope",
   "version": "0.2.0",
   "description": "Finds the mature, battle-tested repos your AI-written codebase reinvented by hand, and grades the dependencies it already has.",
   "keywords": [
@@ -18,9 +18,17 @@
     "node": ">=20.11"
   },
   "bin": {
-    "reporadar": "dist/cli.js"
+    "codeisotope": "dist/cli.js"
   },
   "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HARRY5432/CodeIsotope.git"
+  },
+  "homepage": "https://github.com/HARRY5432/CodeIsotope#readme",
+  "bugs": {
+    "url": "https://github.com/HARRY5432/CodeIsotope/issues"
+  },
   "files": [
     "dist",
     "README.md"

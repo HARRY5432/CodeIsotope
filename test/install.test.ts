@@ -6,14 +6,14 @@ import { test } from 'node:test';
 import { runInit } from '../src/commands/init.ts';
 import { MARKER, TARGETS, renderFor } from '../src/commands/targets.ts';
 
-const emptyProject = () => mkdtemp(join(tmpdir(), 'reporadar-init-'));
+const emptyProject = () => mkdtemp(join(tmpdir(), 'codeisotope-init-'));
 
 test('every target renders a non-empty file carrying the marker', () => {
   for (const target of TARGETS) {
     const out = renderFor(target);
     assert.ok(out.length > 500, `${target.key} output looks truncated`);
     assert.ok(out.includes(MARKER), `${target.key} output is missing the regeneration marker`);
-    assert.ok(out.includes('reporadar scan --json'), `${target.key} output lost the scan instruction`);
+    assert.ok(out.includes('codeisotope scan --json'), `${target.key} output lost the scan instruction`);
     assert.ok(!out.includes('{{ARGS}}'), `${target.key} left the argument placeholder unsubstituted`);
     assert.ok(out.includes(target.argsToken), `${target.key} did not inject its own argument token`);
   }
@@ -23,7 +23,7 @@ test('the Gemini TOML file is well formed', () => {
   const gemini = TARGETS.find((t) => t.key === 'gemini');
   assert.ok(gemini);
   const out = renderFor(gemini);
-  assert.match(out, /^# reporadar:generated/m);
+  assert.match(out, /^# codeisotope:generated/m);
   assert.match(out, /^description = "/m);
   assert.match(out, /^prompt = '''$/m);
   // A literal triple quote inside the body would terminate the string early.
@@ -38,7 +38,7 @@ test('init detects an existing CLI directory and installs only there', async () 
   assert.deepEqual(result.detected, ['cursor']);
   assert.deepEqual(result.installed.map((i) => i.target), ['cursor']);
   assert.equal(result.installed[0]?.action, 'created');
-  const written = await readFile(join(root, '.cursor/commands/reporadar.md'), 'utf8');
+  const written = await readFile(join(root, '.cursor/commands/codeisotope.md'), 'utf8');
   assert.ok(written.includes(MARKER));
 });
 
@@ -52,15 +52,15 @@ test('with no CLI detected it falls back to Claude Code and opencode and says so
 test('a hand-written command file is never clobbered without --force', async () => {
   const root = await emptyProject();
   await mkdir(join(root, '.claude/commands'), { recursive: true });
-  await writeFile(join(root, '.claude/commands/reporadar.md'), 'my own prompt', 'utf8');
+  await writeFile(join(root, '.claude/commands/codeisotope.md'), 'my own prompt', 'utf8');
 
   const skipped = await runInit({ cwd: root, targets: ['claude'] });
   assert.equal(skipped.installed[0]?.action, 'skipped-exists');
-  assert.equal(await readFile(join(root, '.claude/commands/reporadar.md'), 'utf8'), 'my own prompt');
+  assert.equal(await readFile(join(root, '.claude/commands/codeisotope.md'), 'utf8'), 'my own prompt');
 
   const forced = await runInit({ cwd: root, targets: ['claude'], force: true });
   assert.equal(forced.installed[0]?.action, 'updated');
-  assert.ok((await readFile(join(root, '.claude/commands/reporadar.md'), 'utf8')).includes(MARKER));
+  assert.ok((await readFile(join(root, '.claude/commands/codeisotope.md'), 'utf8')).includes(MARKER));
 });
 
 test('a file we generated is updated in place without --force', async () => {
@@ -74,7 +74,7 @@ test('--dry-run writes nothing', async () => {
   const root = await emptyProject();
   const result = await runInit({ cwd: root, targets: ['claude'], dryRun: true });
   assert.equal(result.installed[0]?.action, 'would-write');
-  await assert.rejects(() => readFile(join(root, '.claude/commands/reporadar.md'), 'utf8'));
+  await assert.rejects(() => readFile(join(root, '.claude/commands/codeisotope.md'), 'utf8'));
 });
 
 test('an unknown target is reported rather than ignored', async () => {

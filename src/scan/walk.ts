@@ -8,7 +8,7 @@ export const IGNORE_DIRS = new Set([
   'coverage', '.nyc_output', 'vendor', 'venv', '.venv', '__pycache__', '.mypy_cache',
   '.pytest_cache', '.tox', '.gradle', '.idea', '.vscode', '.terraform',
   'bower_components', 'jspm_packages', '.yarn', '.pnpm-store', '.serverless',
-  'Pods', 'DerivedData', '.dart_tool', 'bin', 'obj', 'tmp', 'temp', '.reporadar-cache',
+  'Pods', 'DerivedData', '.dart_tool', 'bin', 'obj', 'tmp', 'temp', '.codeisotope-cache',
 ]);
 
 /** Files whose contents are generated, vendored, or lockfiles -- noise for detectors. */

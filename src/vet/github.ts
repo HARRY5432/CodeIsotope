@@ -14,7 +14,7 @@ let tokenPromise: Promise<string | undefined> | undefined;
  * throughput upgrade, never a requirement.
  */
 async function resolveToken(): Promise<string | undefined> {
-  const fromEnv = process.env.REPORADAR_GITHUB_TOKEN ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  const fromEnv = process.env.CODEISOTOPE_GITHUB_TOKEN ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
   if (fromEnv) return fromEnv;
   try {
     // No shell: argv form, so a hostile PATH entry cannot inject.
