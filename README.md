@@ -4,7 +4,12 @@
 
 AI coding assistants write code. They rarely go looking for the mature, widely-adopted repository that already solved the problem — so codebases built with AI quietly accumulate hand-rolled retry loops, `JSON.parse(JSON.stringify())` clones, `Math.random()` session tokens, and `split(',')` CSV parsers. Each one works in the happy path and fails in production.
 
-RepoRadar closes that gap. It installs into your project as a `/reporadar` slash command for whichever AI coding CLI you already use, scans the codebase for capabilities that look hand-implemented, then gathers hard evidence on the libraries that already solve them — maintenance, adoption, bus factor, published advisories, licence — so the recommendation is a fact, not a guess.
+RepoRadar closes that gap from both ends. It installs into your project as a `/reporadar` slash command for whichever AI coding CLI you already use, then:
+
+- **`scan`** finds capabilities that look hand-implemented, and
+- **`audit`** grades the dependencies you already have — the deprecated, archived and quietly-abandoned ones no advisory will ever be filed against.
+
+Either way it gathers hard evidence on the libraries involved — maintenance, adoption, bus factor, published advisories, licence — so the recommendation is a fact, not a guess.
 
 ```
 npx reporadar init      # install the slash command into this project
@@ -17,8 +22,8 @@ RepoRadar is two halves with a hard line between them:
 
 | | Does | Never does |
 |---|---|---|
-| **The binary** (`reporadar`) | Fingerprints the code, queries npm / GitHub / deps.dev / OpenSSF, scores health | Judge whether a finding is real |
-| **The host model** (your AI CLI) | Reads the flagged code, confirms or discards each lead, writes the report | Invent a package from memory |
+| **The binary** (`reporadar`) | Fingerprints the code, grades your dependencies, queries npm / GitHub / deps.dev / OpenSSF, scores health | Judge whether a finding is real, or pick a replacement |
+| **The host model** (your AI CLI) | Reads the flagged code, confirms or discards each lead, chooses and vets replacements, writes the report | Invent a package from memory |
 
 That split is the whole design. The model supplies judgement — it can tell a real retry loop from an incidental `for` loop with a `setTimeout` in it. The binary supplies facts that cannot be hallucinated — every recommended package is verified to exist, with real download counts and a real last-commit date. The slash command tells the model, in as many words, never to recommend anything that did not come back from `reporadar vet`.
 
@@ -55,6 +60,10 @@ reporadar scan ./src --json         # machine-readable, scoped to a subtree
 reporadar scan --only csv-parsing,password-hashing
 reporadar scan --include-suppressed # report even capabilities you already have a library for
 
+reporadar audit                     # grade every direct dependency
+reporadar audit --dev               # include devDependencies
+reporadar audit --fail-on replace   # exit 3 in CI if anything is deprecated/archived/abandoned
+
 reporadar vet "csv parser quoted fields" --seed papaparse --seed csv-parse
 reporadar vet --package lru-cache --package quick-lru
 reporadar detectors                 # list every detector and what it matches
@@ -84,6 +93,43 @@ high    password hashing
      ~ Security        OpenSSF Scorecard 5.5/10, no known advisories
      + License         MIT (permissive)
 ```
+
+## Auditing what you already installed
+
+`scan` asks what you should have installed. `audit` asks whether what you already installed is rotting.
+
+```
+RepoRadar audit
+6 direct dependencies | ecosystem: npm
+4 replace | 2 healthy
+
+  replace  request@^2.88.2  F 25/100
+            deprecated by its maintainers: request has been deprecated, see .../issues/3142
+            1 known advisory/advisories on the current version: GHSA-p8p7-x288-28g6
+            no commits in 79 months -- effectively unmaintained
+            find a replacement: reporadar vet "Simplified HTTP client"
+
+  replace  left-pad@^1.3.0  F 25/100
+            deprecated by its maintainers: use String.prototype.padStart()
+            repository is archived -- it will receive no further fixes, including security fixes
+            maintainer says use String.prototype.padStart() -- drop the dependency
+
+Healthy: lru-cache, papaparse
+```
+
+Four verdicts: `replace` (deprecated, archived, live advisory, or dead for years), `weak` (maintenance has stopped, no licence, or no repo to verify), `aging` (slowing down — a watch item), `healthy`.
+
+Three things make the verdict different from a health score:
+
+- **Adoption is ignored.** Popularity is sunk cost once a package is in your `package.json`. A 200-download package its author still maintains is fine; `async-retry` at 31M downloads a week and five years without a commit is not.
+- **Dev dependencies are graded more leniently.** A stale test runner is a smaller problem than a stale runtime dependency, so the staleness thresholds are looser for `devDependencies`.
+- **Abandonment is measured on real commits.** Same rule as the health score: `pushed_at` counts any branch, so it never decides the verdict.
+
+**Audit does not choose the replacement**, and that is deliberate. npm search ranks on text relevance, so querying a package's own description returns its `@types` stub, forks that inherit the same abandoned code, and packages that merely share vocabulary — searching `async-retry`'s description surfaces a JSDoc parser at grade A. Picking a functional equivalent requires knowing which of the dependency's features your code actually uses, which is the model's job. The binary reports the problem, quotes the maintainer's own suggested successor when the deprecation message names one, and hands over search terms.
+
+Direct dependencies only. Transitive advisories are `npm audit`'s job and it does them well; the gap nobody covers is the dependency *you chose* that has been abandoned for three years, because no advisory will ever be filed against it.
+
+`--fail-on replace|weak|aging` exits 3, so it works as a CI gate.
 
 ## How the health score works
 
@@ -142,7 +188,7 @@ Zero runtime dependencies, so `npx reporadar` installs in under a second and car
 ```bash
 npm install
 npm run dev -- scan      # runs src/ directly via Node's native TypeScript support
-npm test                 # 32 tests, all offline
+npm test                 # 48 tests, all offline
 npm run typecheck
 npm run build
 ```
@@ -151,6 +197,6 @@ Requires Node 20.11+. `src/lib/http.ts` hand-rolls retry with backoff and a conc
 
 ## Status
 
-v0.1.0. Scanning is JavaScript/TypeScript, and vetting is npm-first; other ecosystems are detected and reported but must be vetted by explicit `--package`. The roadmap, in order: flagging weak dependencies you already have, then reference implementations to learn from, then missing infrastructure.
+v0.2.0. Scanning is JavaScript/TypeScript, and both auditing and vetting are npm-first; other ecosystems are detected and reported but must be vetted by explicit `--package`. The roadmap, in order: reference implementations to learn from, then missing infrastructure the project lacks.
 
 MIT.

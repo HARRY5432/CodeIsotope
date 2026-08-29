@@ -1,7 +1,7 @@
 {
   "name": "reporadar",
-  "version": "0.1.0",
-  "description": "Finds the mature, battle-tested repos your AI-written codebase reinvented by hand.",
+  "version": "0.2.0",
+  "description": "Finds the mature, battle-tested repos your AI-written codebase reinvented by hand, and grades the dependencies it already has.",
   "keywords": [
     "ai",
     "codebase",
