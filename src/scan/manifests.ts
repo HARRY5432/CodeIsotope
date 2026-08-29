@@ -15,7 +15,10 @@ const MANIFEST_FILES: Array<{ file: string; ecosystem: Ecosystem }> = [
 
 async function readIfPresent(path: string): Promise<string | undefined> {
   try {
-    return await readFile(path, 'utf8');
+    const text = await readFile(path, 'utf8');
+    // Editors on Windows routinely write a UTF-8 BOM. JSON.parse throws on it, which would have
+    // us silently report a project as having no dependencies at all.
+    return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   } catch {
     return undefined;
   }
