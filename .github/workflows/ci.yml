@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20.11 is the floor declared in package.json; the others are current LTS and latest.
+        node: ['20.11', '22', '24']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      - run: npm run build
+
+      # The binary has to actually run from a clean build, not just compile.
+      - run: node dist/cli.js --version
+
+      - run: node dist/cli.js scan --json > /dev/null
+
+  self-audit:
+    # Dogfooding: CodeIsotope gates its own build on its own dependency audit. This job talks to
+    # npm and GitHub, so it is allowed to fail without failing the build -- a rate limit or an
+    # upstream outage is not a defect in this repository.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Audit our own dependencies
+        env:
+          # Raises the GitHub API limit from 60/hour to 5,000/hour.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node dist/cli.js audit --dev --fail-on replace
