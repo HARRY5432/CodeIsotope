@@ -110,3 +110,47 @@ export interface VetReport {
   candidates: PackageEvidence[];
   notes: string[];
 }
+
+/**
+ * What an audited dependency is: 'healthy' needs no action, 'aging' is a watch item,
+ * 'weak' should be reviewed, and 'replace' is a hard problem -- deprecated, archived,
+ * or carrying a published advisory.
+ */
+export type DepVerdict = 'healthy' | 'aging' | 'weak' | 'replace';
+
+/** How the project declares the dependency. Dev deps are graded more leniently. */
+export type DepKind = 'direct' | 'dev';
+
+export interface AuditedDep {
+  name: string;
+  kind: DepKind;
+  /** The range as written in the manifest, e.g. "^4.17.21". */
+  range: string;
+  /** Manifest the range came from, relative to scan root. */
+  manifest: string;
+  verdict: DepVerdict;
+  /** Ordered, human-readable reasons the verdict is what it is. */
+  reasons: string[];
+  evidence: PackageEvidence;
+  /**
+   * The replacement the maintainer named in the deprecation message, when there is one. This is a
+   * fact quoted from package metadata, not a suggestion of ours -- still worth vetting before use.
+   * `builtIn` means the answer is to delete the dependency, not swap it.
+   */
+  maintainerSuggestion?: { name: string; builtIn: boolean };
+  /** Feed these to `reporadar vet` to find and prove a replacement. Only set for weak/replace. */
+  searchTerms?: string[];
+}
+
+export interface AuditReport {
+  tool: { name: string; version: string };
+  root: string;
+  ecosystem: Ecosystem;
+  generatedAt: string;
+  /** Counts by verdict, so CI can act without walking the list. */
+  totals: { audited: number; healthy: number; aging: number; weak: number; replace: number };
+  deps: AuditedDep[];
+  /** Dependencies we could not gather any evidence for, with the reason. */
+  unresolved: Array<{ name: string; kind: DepKind; reason: string }>;
+  notes: string[];
+}
