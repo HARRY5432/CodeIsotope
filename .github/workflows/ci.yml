@@ -10,13 +10,14 @@ permissions:
   contents: read
 
 jobs:
+  # The test suite is written in TypeScript and run directly by Node, so it needs a Node new
+  # enough for native type stripping (22.6+) and for --test to accept a glob (21+).
   test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # 20.11 is the floor declared in package.json; the others are current LTS and latest.
-        node: ['20.11', '22', '24']
+        node: ['22', '24']
     steps:
       - uses: actions/checkout@v5
 
@@ -33,15 +34,38 @@ jobs:
 
       - run: npm run build
 
-      # The binary has to actually run from a clean build, not just compile.
+      # Compiling and running are different claims, so check the second one too.
       - run: node dist/cli.js --version
 
       - run: node dist/cli.js scan --json > /dev/null
 
+  # package.json declares node >=20.11, and what a consumer installs is the compiled dist/, not
+  # the TypeScript sources. So the floor is verified against the published artefact: build it, then
+  # run it. Running the .ts test suite here is impossible by design, not an omission.
+  engine-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20.11'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - run: node dist/cli.js --version
+
+      - run: node dist/cli.js detectors
+
+      - run: node dist/cli.js scan --json > /dev/null
+
+  # Dogfooding: CodeIsotope gates its own build on its own dependency audit. This job talks to
+  # npm and GitHub, so it is allowed to fail without failing the build -- a rate limit or an
+  # upstream outage is not a defect in this repository.
   self-audit:
-    # Dogfooding: CodeIsotope gates its own build on its own dependency audit. This job talks to
-    # npm and GitHub, so it is allowed to fail without failing the build -- a rate limit or an
-    # upstream outage is not a defect in this repository.
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:

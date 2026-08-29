@@ -195,7 +195,9 @@ npm run typecheck
 npm run build
 ```
 
-Requires Node 20.11+. `src/lib/http.ts` hand-rolls retry with backoff and a concurrency gate — precisely what this tool tells you not to do. That trade is deliberate and documented in the file: the zero-dependency constraint applies to a tool distributed by `npx`, not to the projects it scans. CodeIsotope flags itself for it, which is the honest outcome.
+Requires Node 20.11+ **to run**; Node 22+ to develop, since the test suite is TypeScript executed directly by `node --test`. CI verifies both: the suite runs on 22 and 24, and the 20.11 floor is checked against the compiled `dist/`, which is what a consumer actually installs.
+
+`src/lib/http.ts` hand-rolls retry with backoff and a concurrency gate — precisely what this tool tells you not to do. That trade is deliberate and documented in the file: the zero-dependency constraint applies to a tool distributed by `npx`, not to the projects it scans. CodeIsotope flags itself for it, which is the honest outcome.
 
 ## Status
 
