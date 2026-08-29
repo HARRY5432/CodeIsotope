@@ -1,5 +1,6 @@
 import { mapLimit } from '../lib/http.ts';
 import type { Ecosystem, PackageEvidence, VetReport } from '../lib/types.ts';
+import { TOOL_VERSION } from '../lib/version.ts';
 import { scoreHealth } from '../score/health.ts';
 import { fetchDepsDev } from './depsdev.ts';
 import { fetchRepoEvidence, isAuthenticated } from './github.ts';
@@ -71,6 +72,22 @@ async function gatherOne(candidate: NpmCandidate, ecosystem: Ecosystem): Promise
 }
 
 /**
+ * Gather evidence for a list of package names, by name alone.
+ *
+ * Shared by `vet` and `audit` on purpose: an audited dependency and a suggested replacement must be
+ * measured by the identical pipeline, or comparing their scores would be meaningless.
+ */
+export async function gatherEvidence(
+  names: readonly string[],
+  ecosystem: Ecosystem = 'npm',
+  concurrency = 3,
+): Promise<PackageEvidence[]> {
+  if (names.length === 0) return [];
+  const enriched = await enrichNpmCandidates(names.map((name) => ({ name })));
+  return mapLimit(enriched, concurrency, (c) => gatherOne(c, ecosystem));
+}
+
+/**
  * Turn a capability description (or an explicit package list) into ranked, evidence-backed candidates.
  * Every field comes from a public API -- nothing here is inferred or generated.
  */
@@ -98,11 +115,10 @@ export async function vet(query: string, opts: VetOptions = {}): Promise<VetRepo
   const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))].slice(0, limit);
   if (unique.length === 0) {
     notes.push('No candidate packages found for this query.');
-    return { tool: { name: 'reporadar', version: '0.1.0' }, query, ecosystem, generatedAt: new Date().toISOString(), candidates: [], notes };
+    return { tool: { name: 'reporadar', version: TOOL_VERSION }, query, ecosystem, generatedAt: new Date().toISOString(), candidates: [], notes };
   }
 
-  const enriched = await enrichNpmCandidates(unique.map((name) => ({ name })));
-  const candidates = await mapLimit(enriched, 3, (c) => gatherOne(c, ecosystem));
+  const candidates = await gatherEvidence(unique, ecosystem);
 
   // Scores within a few points of each other are not meaningfully different, so adoption breaks
   // the tie: between two equally healthy libraries, the one the ecosystem already standardised on
@@ -117,5 +133,5 @@ export async function vet(query: string, opts: VetOptions = {}): Promise<VetRepo
     notes.push('Running unauthenticated against the GitHub API (60 requests/hour). Set GITHUB_TOKEN or run `gh auth login` for 5,000/hour and more complete evidence.');
   }
 
-  return { tool: { name: 'reporadar', version: '0.1.0' }, query, ecosystem, generatedAt: new Date().toISOString(), candidates, notes };
+  return { tool: { name: 'reporadar', version: TOOL_VERSION }, query, ecosystem, generatedAt: new Date().toISOString(), candidates, notes };
 }
