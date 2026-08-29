@@ -2,13 +2,14 @@
 import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { setCacheEnabled } from './lib/http.ts';
-import { renderFingerprint, renderVetReport } from './lib/render.ts';
+import { renderAuditReport, renderFingerprint, renderVetReport } from './lib/render.ts';
 import { TOOL_VERSION } from './lib/version.ts';
 import { runInit } from './commands/init.ts';
+import { auditDependencies, worstVerdict } from './audit/audit.ts';
 import { buildFingerprint } from './scan/fingerprint.ts';
 import { DETECTORS } from './scan/detectors/index.ts';
 import { vet } from './vet/evidence.ts';
-import type { Ecosystem } from './lib/types.ts';
+import type { DepVerdict, Ecosystem } from './lib/types.ts';
 
 // Dogfooding: this is exactly the util.parseArgs that our own argv-parsing detector recommends.
 const OPTIONS = {
@@ -27,6 +28,8 @@ const OPTIONS = {
   all: { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },
   'dry-run': { type: 'boolean', default: false },
+  dev: { type: 'boolean', default: false },
+  'fail-on': { type: 'string' },
 } as const;
 
 const HELP = `reporadar ${TOOL_VERSION} -- find the mature repos your codebase reinvented by hand.
@@ -38,6 +41,9 @@ USAGE
   reporadar scan [path] [--json] [--only <ids>] [--limit N] [--max-files N] [--include-suppressed]
       Fingerprint the codebase and list capabilities that look hand-rolled.
 
+  reporadar audit [path] [--json] [--dev] [--only <names>] [--limit N] [--fail-on <verdict>]
+      Grade the dependencies you already have: deprecated, archived, abandoned, or unlicensed.
+
   reporadar vet <query> [--json] [--package <name>]... [--seed <name>]... [--ecosystem npm] [--limit N]
       Gather hard evidence on candidate packages: maintenance, adoption, bus factor, advisories, licence.
 
@@ -48,10 +54,17 @@ GLOBAL
   --no-cache      Bypass the 6-hour on-disk response cache.
   -h, --help      Show this help.  -v, --version   Print the version.
 
+AUDIT
+  --dev                  Include devDependencies (graded more leniently than runtime deps).
+  --fail-on <verdict>    Exit 3 if any dependency is this bad or worse: replace, weak, aging.
+  Audit states the problem and gives you search terms; run \`reporadar vet\` to prove a replacement.
+
 NOTES
   No API keys are required. GitHub requests use GITHUB_TOKEN, GH_TOKEN, or your local \`gh\` login
   when available, purely to raise the rate limit from 60/hour to 5,000/hour.
 `;
+
+const VERDICT_ORDER: DepVerdict[] = ['healthy', 'aging', 'weak', 'replace'];
 
 function fail(message: string, code = 1): never {
   process.stderr.write(`reporadar: ${message}\n`);
@@ -95,6 +108,30 @@ async function main(): Promise<void> {
         includeSuppressed: values['include-suppressed'],
       });
       process.stdout.write(values.json ? `${JSON.stringify(fingerprint, null, 2)}\n` : `${renderFingerprint(fingerprint)}\n`);
+      return;
+    }
+
+    case 'audit': {
+      const root = resolve(positionals[1] ?? process.cwd());
+      const failOn = values['fail-on'];
+      if (failOn !== undefined && !VERDICT_ORDER.includes(failOn as DepVerdict)) {
+        fail(`--fail-on must be one of ${VERDICT_ORDER.join(', ')}, got "${failOn}"`, 2);
+      }
+      const report = await auditDependencies(root, {
+        includeDev: values.dev,
+        ...(values.only ? { only: values.only.split(',').map((s) => s.trim()).filter(Boolean) } : {}),
+        ...(toInt(values.limit, 'limit') !== undefined ? { limit: toInt(values.limit, 'limit') } : {}),
+      });
+      process.stdout.write(values.json ? `${JSON.stringify(report, null, 2)}\n` : `${renderAuditReport(report)}\n`);
+
+      if (failOn !== undefined) {
+        const worst = worstVerdict(report);
+        const threshold = VERDICT_ORDER.indexOf(failOn as DepVerdict);
+        if (worst !== undefined && VERDICT_ORDER.indexOf(worst) >= threshold) {
+          process.stderr.write(`reporadar: worst dependency verdict is "${worst}", at or above --fail-on "${failOn}"\n`);
+          process.exit(3);
+        }
+      }
       return;
     }
 

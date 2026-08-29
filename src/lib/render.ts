@@ -1,4 +1,4 @@
-import type { Fingerprint, HealthVerdict, PackageEvidence, VetReport } from './types.ts';
+import type { AuditReport, AuditedDep, DepVerdict, Fingerprint, HealthVerdict, PackageEvidence, VetReport } from './types.ts';
 
 const useColor = process.stdout.isTTY === true && !process.env.NO_COLOR;
 const c = (code: string) => (s: string) => (useColor ? `\u001b[${code}m${s}\u001b[0m` : s);
@@ -81,5 +81,64 @@ export function renderVetReport(report: VetReport): string {
   if (report.notes.length > 0) out.push('');
   report.candidates.forEach((pkg, i) => out.push(...renderCandidate(pkg, i)));
   if (report.candidates.length === 0) out.push(dim('  nothing to show'));
+  return out.join('\n');
+}
+
+const VERDICT_LABEL: Record<DepVerdict, string> = {
+  replace: red('replace'),
+  weak: red('weak   '),
+  aging: yellow('aging  '),
+  healthy: green('healthy'),
+};
+
+function renderDep(dep: AuditedDep): string[] {
+  const out: string[] = [];
+  const kind = dep.kind === 'dev' ? dim(' (dev)') : '';
+  const grade = GRADE_COLOR[dep.evidence.health.grade](`${dep.evidence.health.grade} ${dep.evidence.health.score}/100`);
+  out.push(`  ${VERDICT_LABEL[dep.verdict]}  ${bold(dep.name)}${dim(`@${dep.range}`)}${kind}  ${grade}`);
+  for (const reason of dep.reasons) out.push(`            ${reason}`);
+  if (dep.evidence.repo) out.push(dim(`            repo: ${dep.evidence.repo.url}`));
+  if (dep.maintainerSuggestion) {
+    const s = dep.maintainerSuggestion;
+    out.push(`            ${cyan(s.builtIn ? `maintainer says use ${s.name} -- drop the dependency` : `maintainer says use: ${s.name}`)}`);
+  }
+  if (dep.searchTerms && dep.searchTerms.length > 0) {
+    out.push(dim(`            find a replacement: reporadar vet "${dep.searchTerms[0]}"`));
+  }
+  out.push('');
+  return out;
+}
+
+export function renderAuditReport(report: AuditReport): string {
+  const out: string[] = [];
+  const t = report.totals;
+  out.push(bold('RepoRadar audit'));
+  out.push(dim(`${t.audited} direct dependencies | ecosystem: ${report.ecosystem}`));
+  const summary = [
+    t.replace > 0 ? red(`${t.replace} replace`) : '',
+    t.weak > 0 ? red(`${t.weak} weak`) : '',
+    t.aging > 0 ? yellow(`${t.aging} aging`) : '',
+    green(`${t.healthy} healthy`),
+  ].filter(Boolean);
+  out.push(summary.join(dim(' | ')));
+  out.push('');
+
+  for (const note of report.notes) out.push(`  ${yellow('note')} ${note}`);
+  if (report.notes.length > 0) out.push('');
+
+  const flagged = report.deps.filter((d) => d.verdict !== 'healthy');
+  if (flagged.length === 0 && t.audited > 0) {
+    out.push(green('Every direct dependency is actively maintained with no known problems.'));
+  }
+  for (const dep of flagged) out.push(...renderDep(dep));
+
+  const healthy = report.deps.filter((d) => d.verdict === 'healthy');
+  if (healthy.length > 0 && flagged.length > 0) {
+    out.push(dim(`Healthy: ${healthy.map((d) => d.name).join(', ')}`));
+  }
+  if (report.unresolved.length > 0) {
+    out.push('');
+    out.push(dim(`Could not verify: ${report.unresolved.map((u) => `${u.name} (${u.reason})`).join('; ')}`));
+  }
   return out.join('\n');
 }
