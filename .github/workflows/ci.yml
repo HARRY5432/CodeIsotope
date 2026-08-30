@@ -39,6 +39,8 @@ jobs:
 
       - run: node dist/cli.js scan --json > /dev/null
 
+      - run: node dist/cli.js gaps --json > /dev/null
+
   # package.json declares node >=20.11, and what a consumer installs is the compiled dist/, not
   # the TypeScript sources. So the floor is verified against the published artefact: build it, then
   # run it. Running the .ts test suite here is impossible by design, not an omission.
@@ -60,7 +62,11 @@ jobs:
 
       - run: node dist/cli.js detectors
 
+      - run: node dist/cli.js gap-list
+
       - run: node dist/cli.js scan --json > /dev/null
+
+      - run: node dist/cli.js gaps --json > /dev/null
 
   # Dogfooding: CodeIsotope gates its own build on its own dependency audit. This job talks to
   # npm and GitHub, so it is allowed to fail without failing the build -- a rate limit or an
@@ -85,3 +91,7 @@ jobs:
           # Raises the GitHub API limit from 60/hour to 5,000/hour.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node dist/cli.js audit --dev --fail-on replace
+
+      # Offline, so this one is a genuine gate rather than best-effort.
+      - name: Check our own missing infrastructure
+        run: node dist/cli.js gaps --fail-on high

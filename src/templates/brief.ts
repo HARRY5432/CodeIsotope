@@ -9,9 +9,9 @@
  * {{ARGS}} is replaced with each CLI's own argument placeholder at install time.
  */
 export const BRIEF_DESCRIPTION =
-  'Find mature, well-maintained libraries that already solve what this codebase hand-rolled, and grade the dependencies it already has';
+  'Find mature libraries this codebase reinvented by hand, grade the dependencies it already has, and report infrastructure it is missing';
 
-export const BRIEF_BODY = `Find the battle-tested open-source libraries this codebase reinvented by hand, grade the dependencies it already relies on, and report both with evidence.
+export const BRIEF_BODY = `Find the battle-tested open-source libraries this codebase reinvented by hand, grade the dependencies it already relies on, report the infrastructure it has no answer for, and back all three with evidence.
 
 Focus area (optional, may be empty): {{ARGS}}
 
@@ -56,9 +56,33 @@ This grades every direct dependency and returns a \`verdict\` per package:
 
 **The audit deliberately does not choose replacements.** That part is yours: read the code that actually imports the dependency, work out which of its features are in use, then vet a replacement that covers them. \`searchTerms\` is a starting point, not an answer.
 
-## Step 4 -- gather evidence on replacements
+## Step 4 -- find what the project has no answer for
 
-For each surviving scan candidate, and each \`replace\`/\`weak\` dependency worth acting on:
+Run:
+
+\`\`\`
+npx --yes codeisotope gaps --json
+\`\`\`
+
+Steps 1-3 look at code that exists. This looks for code that does not: graceful shutdown, request validation, outbound timeouts, rate limiting on auth routes, structured logging, a health check, env validation, a lockfile.
+
+\`profile.traits\` is what the binary established about the project by looking -- \`http-server\`, \`cli\`, \`database\`, \`auth\` and so on. **A gap is only ever reported when a trait makes it relevant**, so a CLI is never told it needs security headers. Each entry in \`missing\` carries:
+
+- \`why\` -- the concrete failure it prevents. Quote this; it is written to be quoted.
+- \`becauseTraits\` -- why the binary thinks this applies to your project.
+- \`citations\` -- the file and line that justified raising it.
+- \`severity\` -- \`high\` means fix before shipping.
+
+Two things to check before you report a gap:
+
+- **Verify the citation.** Open the cited line. The binary excludes comments and string literals from evidence, but you can see context it cannot.
+- **A gap the project deliberately does not need is not a finding.** A worker with no HTTP surface does not need a health route even if a Dockerfile made it look containerised. Say so and move on.
+
+\`satisfied\` lists gaps already handled and what handles them -- useful for confirming the project is in better shape than it looks. Ignore \`notApplicable\`.
+
+## Step 5 -- gather evidence on replacements
+
+For each surviving scan candidate, each \`replace\`/\`weak\` dependency worth acting on, and each gap where a library is the right answer:
 
 \`\`\`
 npx --yes codeisotope vet "<capability>" --seed <knownSolution> --seed <knownSolution> --json
@@ -72,11 +96,12 @@ Hard rules:
 - Never recommend anything flagged \`deprecated\`, \`archived\`, or \`known-vulnerability\`.
 - A \`@types/*\` package and a fork of the same abandoned codebase are not replacements. If the only candidates \`vet\` returns are those, report that no replacement was found.
 - If \`notes\` reports a platform built-in that covers the case (\`structuredClone\`, \`URLSearchParams\`, \`crypto.randomUUID\`, \`util.parseArgs\`, \`fs.glob\`), recommend that first. Zero dependencies beats a good dependency.
+- Several gaps are best closed with no dependency at all -- \`process.on("SIGTERM")\`, \`AbortSignal.timeout()\`, a route returning 200. Prefer those.
 - Prefer the highest health score, but say plainly when a lower-scored option is the better fit and why.
 
-## Step 5 -- report
+## Step 6 -- report
 
-Two sections. Lead with whichever contains the more serious problem -- a dependency with a live advisory outranks a hand-rolled CSV parser.
+Three sections. Lead with whichever holds the most serious problem: a dependency with a live advisory or a service that loses data on every deploy outranks a hand-rolled CSV parser.
 
 **Hand-rolled code that a library already solves.** One entry per confirmed finding, security and correctness first:
 
@@ -91,6 +116,12 @@ Two sections. Lead with whichever contains the more serious problem -- a depende
 - **Where it is used** -- the files that import it, and which of its features they use.
 - **What to move to** -- a vetted replacement with its evidence, or the platform built-in, or an honest "nothing better exists; consider vendoring or forking".
 - **Migration cost** -- as above.
+
+**Infrastructure that is missing.** One entry per confirmed gap, \`high\` severity first:
+
+- **What is missing, and what breaks without it** -- quote \`why\`.
+- **Why it applies here** -- the trait and the cited line, so the developer can check the claim.
+- **The smallest fix that closes it** -- the built-in where one exists, otherwise a vetted package.
 
 Mention \`aging\` dependencies in one line as a watch list. Finish with a short list of anything you deliberately left alone, so the developer knows it was considered rather than missed.
 

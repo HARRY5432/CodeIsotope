@@ -6,12 +6,13 @@ Isotopes are the same element in variants of differing stability — some stable
 
 AI coding assistants write code. They rarely go looking for the mature, widely-adopted repository that already solved the problem — so codebases built with AI quietly accumulate hand-rolled retry loops, `JSON.parse(JSON.stringify())` clones, `Math.random()` session tokens, and `split(',')` CSV parsers. Each one works in the happy path and fails in production.
 
-CodeIsotope closes that gap from both ends. It installs into your project as a `/codeisotope` slash command for whichever AI coding CLI you already use, then:
+CodeIsotope closes that gap from three directions. It installs into your project as a `/codeisotope` slash command for whichever AI coding CLI you already use, then:
 
-- **`scan`** finds capabilities that look hand-implemented, and
-- **`audit`** grades the dependencies you already have — the deprecated, archived and quietly-abandoned ones no advisory will ever be filed against.
+- **`scan`** finds capabilities that look hand-implemented,
+- **`audit`** grades the dependencies you already have — the deprecated, archived and quietly-abandoned ones no advisory will ever be filed against, and
+- **`gaps`** reports the infrastructure you have no answer for at all.
 
-Either way it gathers hard evidence on the libraries involved — maintenance, adoption, bus factor, published advisories, licence — so the recommendation is a fact, not a guess.
+All three gather hard evidence on the libraries involved — maintenance, adoption, bus factor, published advisories, licence — so the recommendation is a fact, not a guess.
 
 ```
 npx codeisotope init      # install the slash command into this project
@@ -66,9 +67,14 @@ codeisotope audit                     # grade every direct dependency
 codeisotope audit --dev               # include devDependencies
 codeisotope audit --fail-on replace   # exit 3 in CI if anything is deprecated/archived/abandoned
 
+codeisotope gaps                      # report infrastructure the project has no answer for
+codeisotope gaps --include-not-applicable  # show what was skipped, and why
+codeisotope gaps --fail-on high       # exit 3 in CI on any high-severity gap
+
 codeisotope vet "csv parser quoted fields" --seed papaparse --seed csv-parse
 codeisotope vet --package lru-cache --package quick-lru
 codeisotope detectors                 # list every detector and what it matches
+codeisotope gap-list                  # list every gap and the traits it applies to
 ```
 
 ### What a scan looks like
@@ -133,6 +139,53 @@ Direct dependencies only. Transitive advisories are `npm audit`'s job and it doe
 
 `--fail-on replace|weak|aging` exits 3, so it works as a CI gate.
 
+## Finding what is missing entirely
+
+`scan` and `audit` examine code that exists. `gaps` looks for code that does not.
+
+```
+CodeIsotope gaps
+1 files, 29 ms
+project profile: containerised, database, http-routes, http-server, outbound-http, reads-env
+
+10 missing capabilities (6 to fix before shipping):
+
+  high    graceful shutdown on SIGTERM  [no-graceful-shutdown]
+            Every container orchestrator and PaaS stops a process by sending SIGTERM and waiting.
+            With no handler, Node exits immediately: in-flight requests are severed mid-response,
+            database transactions are abandoned, and queue jobs are lost. This fires on every
+            single deploy, not just on failures.
+            applies because: http-server
+            known solutions: process.on("SIGTERM") + server.close (built-in), close-with-grace
+
+  high    schema validation at the request boundary  [no-input-validation]
+            ...
+            src/server.js:9  const { email, password } = req.body;
+```
+
+Detecting absence is a far weaker claim than detecting presence, and cheap to get wrong: tell a CLI tool it needs rate limiting and you have taught the reader to ignore the tool. So the mechanism is inverted — **every gap is gated on a trait**, meaning positive evidence that this project is the kind of thing where the gap matters. No trait, no report.
+
+Traits are earned, never assumed: `http-server` from a `listen()` call or an Express import, `auth` from a route whose path is `/login`, `containerised` from a Dockerfile, `cli` from a `bin` entry. Some gaps need a second, narrower signal on top — a route alone does not justify raising rate limiting, but an auth endpoint does, because that is the credential-stuffing target.
+
+Every reported gap carries the traits that made it applicable and the source line that justified it, so the claim is checkable rather than asserted. `--include-not-applicable` shows what was skipped and which traits it would need. Ten gaps, `gap-list` prints them all.
+
+### Code is not data
+
+The interesting failure mode showed up when CodeIsotope was pointed at itself, four separate times:
+
+| What matched | Why it was wrong |
+|---|---|
+| `'AbortSignal.timeout (built-in)'` in the gap catalog | The tool read its own catalog as proof it handled timeouts |
+| A JSDoc line mentioning "the local `gh` CLI login" | A keyless tool looked like it handles credentials |
+| "rate limit" inside the 30-line `HELP` template literal | Satisfied the rate-limiting signal from inside a string |
+| `"import express from 'express'"` in a test fixture | The tool declared itself an HTTP server |
+
+None of these is really about self-reference. Any project holding a table of package names, a set of lint rules, or a fixture of example payloads produces exactly the same false evidence.
+
+The fix is `src/gaps/mask.ts`, which splits each line into two views. Comments and multi-line template bodies are never evidence — prose describing a feature is not the feature. On top of that, signals meaning "this code calls X" match with string and regex bodies blanked, so a mention cannot pose as an implementation. Where both halves matter — `process.on('SIGTERM')` is only meaningful with the call *and* the argument — a signal declares one pattern against the code and another against the literals. Line lengths are preserved so column positions stay valid.
+
+`--fail-on high|medium|low` exits 3.
+
 ## How the health score works
 
 Six weighted signals, 0–100:
@@ -183,6 +236,18 @@ Each detector is anchored on a **required** signal that names the capability, so
 
 Recommendations prefer platform built-ins over dependencies. If `structuredClone`, `URLSearchParams`, `crypto.randomUUID`, `util.parseArgs` or `fs.glob` covers the case, that is the answer — zero dependencies beats a good dependency.
 
+## Gaps
+
+Ten gaps, ordered by severity. Run `codeisotope gap-list` for each one's traits and match rules.
+
+**Reliability** — graceful shutdown on SIGTERM, a handler for unhandled rejections, a health check endpoint
+**Security** — schema validation at the request boundary, HTTP security headers, rate limiting on auth routes
+**Resilience** — timeouts on outbound HTTP calls
+**Operability** — structured logging, environment-variable validation
+**Supply chain** — a committed lockfile
+
+The catalog is deliberately short. Every entry had to clear one bar: a competent reviewer, shown this against a project with the stated traits, would agree it is a real omission rather than a matter of taste. Anything that failed — "you have no tests", "you should use TypeScript", "add a CONTRIBUTING.md" — is absent on purpose. Those are opinions, and the whole claim of this tool is that it reports facts.
+
 ## Development
 
 Zero runtime dependencies, so `npx codeisotope` installs in under a second and carries no supply-chain surface.
@@ -190,7 +255,7 @@ Zero runtime dependencies, so `npx codeisotope` installs in under a second and c
 ```bash
 npm install
 npm run dev -- scan      # runs src/ directly via Node's native TypeScript support
-npm test                 # 48 tests, all offline
+npm test                 # 70 tests, all offline
 npm run typecheck
 npm run build
 ```
@@ -201,6 +266,8 @@ Requires Node 20.11+ **to run**; Node 22+ to develop, since the test suite is Ty
 
 ## Status
 
-v0.2.0. Scanning is JavaScript/TypeScript, and both auditing and vetting are npm-first; other ecosystems are detected and reported but must be vetted by explicit `--package`. The roadmap, in order: reference implementations to learn from, then missing infrastructure the project lacks.
+v0.3.0. Scanning and gap detection are JavaScript/TypeScript; auditing and vetting are npm-first, and other ecosystems are detected and reported but must be vetted by explicit `--package`.
+
+All four capabilities from the original plan are in: replace hand-rolled code, flag weak dependencies, report missing infrastructure, and point at reference implementations. Next, in order: more ecosystems for `audit`, and gap detection beyond JS/TS.
 
 MIT.
