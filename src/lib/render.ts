@@ -1,4 +1,4 @@
-import type { AuditReport, AuditedDep, DepVerdict, Fingerprint, HealthVerdict, PackageEvidence, VetReport } from './types.ts';
+import type { AuditReport, AuditedDep, DepVerdict, Fingerprint, GapReport, HealthVerdict, PackageEvidence, VetReport } from './types.ts';
 
 const useColor = process.stdout.isTTY === true && !process.env.NO_COLOR;
 const c = (code: string) => (s: string) => (useColor ? `\u001b[${code}m${s}\u001b[0m` : s);
@@ -139,6 +139,66 @@ export function renderAuditReport(report: AuditReport): string {
   if (report.unresolved.length > 0) {
     out.push('');
     out.push(dim(`Could not verify: ${report.unresolved.map((u) => `${u.name} (${u.reason})`).join('; ')}`));
+  }
+  return out.join('\n');
+}
+
+const SEVERITY_LABEL: Record<string, string> = {
+  high: red('high  '),
+  medium: yellow('medium'),
+  low: dim('low   '),
+};
+
+/** Wrap prose to a fixed width; the `why` text is a paragraph, not a label. */
+function wrap(text: string, width: number, indent: string): string[] {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    if (current.length === 0) current = word;
+    else if (`${current} ${word}`.length <= width) current += ` ${word}`;
+    else {
+      lines.push(indent + current);
+      current = word;
+    }
+  }
+  if (current) lines.push(indent + current);
+  return lines;
+}
+
+export function renderGapReport(report: GapReport): string {
+  const out: string[] = [];
+  out.push(bold('CodeIsotope gaps'));
+  out.push(dim(`${report.profile.scanned.files} files, ${report.profile.scanned.durationMs} ms`));
+  out.push(dim(`project profile: ${report.profile.traits.join(', ') || 'could not be established'}`));
+  out.push('');
+
+  for (const note of report.notes) out.push(`  ${yellow('note')} ${note}`);
+  if (report.notes.length > 0) out.push('');
+
+  if (report.missing.length === 0) {
+    out.push(green('No missing infrastructure found for this kind of project.'));
+  } else {
+    const high = report.missing.filter((m) => m.severity === 'high').length;
+    out.push(bold(`${report.missing.length} missing capabilit${report.missing.length === 1 ? 'y' : 'ies'}${high > 0 ? ` (${high} to fix before shipping)` : ''}:`));
+    out.push('');
+    for (const gap of report.missing) {
+      out.push(`  ${SEVERITY_LABEL[gap.severity] ?? gap.severity}  ${bold(gap.capability)}  ${dim(`[${gap.gapId}]`)}`);
+      out.push(...wrap(gap.why, 92, '            '));
+      out.push(dim(`            applies because: ${gap.becauseTraits.join(', ')}`));
+      for (const c of gap.citations) {
+        out.push(dim(`            ${cyan(`${c.file}:${c.line}`)}  ${c.text.slice(0, 78)}`));
+      }
+      out.push(dim(`            known solutions: ${gap.knownSolutions.join(', ')}`));
+      out.push('');
+    }
+  }
+
+  if (report.satisfied.length > 0) {
+    out.push(dim(`Already handled: ${report.satisfied.map((s) => `${s.capability} (${s.by})`).join('; ')}`));
+  }
+  if (report.notApplicable.length > 0) {
+    out.push(dim(`Not applicable to this project: ${report.notApplicable.map((n) => n.capability).join('; ')}`));
   }
   return out.join('\n');
 }

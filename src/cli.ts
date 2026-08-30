@@ -2,14 +2,16 @@
 import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { setCacheEnabled } from './lib/http.ts';
-import { renderAuditReport, renderFingerprint, renderVetReport } from './lib/render.ts';
+import { renderAuditReport, renderFingerprint, renderGapReport, renderVetReport } from './lib/render.ts';
 import { TOOL_VERSION } from './lib/version.ts';
 import { runInit } from './commands/init.ts';
 import { auditDependencies, worstVerdict } from './audit/audit.ts';
+import { findGaps, worstSeverity } from './gaps/gaps.ts';
+import { GAPS } from './gaps/catalog.ts';
 import { buildFingerprint } from './scan/fingerprint.ts';
 import { DETECTORS } from './scan/detectors/index.ts';
 import { vet } from './vet/evidence.ts';
-import type { DepVerdict, Ecosystem } from './lib/types.ts';
+import type { Confidence, DepVerdict, Ecosystem } from './lib/types.ts';
 
 // Dogfooding: this is exactly the util.parseArgs that our own argv-parsing detector recommends.
 const OPTIONS = {
@@ -30,6 +32,7 @@ const OPTIONS = {
   'dry-run': { type: 'boolean', default: false },
   dev: { type: 'boolean', default: false },
   'fail-on': { type: 'string' },
+  'include-not-applicable': { type: 'boolean', default: false },
 } as const;
 
 const HELP = `codeisotope ${TOOL_VERSION} -- find the mature repos your codebase reinvented by hand.
@@ -44,10 +47,14 @@ USAGE
   codeisotope audit [path] [--json] [--dev] [--only <names>] [--limit N] [--fail-on <verdict>]
       Grade the dependencies you already have: deprecated, archived, abandoned, or unlicensed.
 
+  codeisotope gaps [path] [--json] [--only <ids>] [--include-not-applicable] [--fail-on <severity>]
+      Report infrastructure the project has no answer for, gated on what kind of project it is.
+
   codeisotope vet <query> [--json] [--package <name>]... [--seed <name>]... [--ecosystem npm] [--limit N]
       Gather hard evidence on candidate packages: maintenance, adoption, bus factor, advisories, licence.
 
   codeisotope detectors            List every detector and what it looks for.
+  codeisotope gap-list             List every gap and the project traits it applies to.
 
 GLOBAL
   --json          Machine-readable output. This is what the slash command consumes.
@@ -59,12 +66,19 @@ AUDIT
   --fail-on <verdict>    Exit 3 if any dependency is this bad or worse: replace, weak, aging.
   Audit states the problem and gives you search terms; run \`codeisotope vet\` to prove a replacement.
 
+GAPS
+  --fail-on <severity>       Exit 3 if any gap is this severe or worse: high, medium, low.
+  --include-not-applicable   Show the gaps that were skipped, and which traits they need.
+  A gap is only ever reported when the project has a trait that makes it relevant, and every
+  reported gap cites the source lines that justified it.
+
 NOTES
   No API keys are required. GitHub requests use GITHUB_TOKEN, GH_TOKEN, or your local \`gh\` login
   when available, purely to raise the rate limit from 60/hour to 5,000/hour.
 `;
 
 const VERDICT_ORDER: DepVerdict[] = ['healthy', 'aging', 'weak', 'replace'];
+const SEVERITY_ORDER: Confidence[] = ['low', 'medium', 'high'];
 
 function fail(message: string, code = 1): never {
   process.stderr.write(`codeisotope: ${message}\n`);
@@ -131,6 +145,45 @@ async function main(): Promise<void> {
           process.stderr.write(`codeisotope: worst dependency verdict is "${worst}", at or above --fail-on "${failOn}"\n`);
           process.exit(3);
         }
+      }
+      return;
+    }
+
+    case 'gaps': {
+      const root = resolve(positionals[1] ?? process.cwd());
+      const failOn = values['fail-on'];
+      if (failOn !== undefined && !SEVERITY_ORDER.includes(failOn as Confidence)) {
+        fail(`--fail-on must be one of ${[...SEVERITY_ORDER].reverse().join(', ')}, got "${failOn}"`, 2);
+      }
+      const report = await findGaps(root, {
+        ...(values.only ? { only: values.only.split(',').map((s) => s.trim()).filter(Boolean) } : {}),
+        ...(toInt(values['max-files'], 'max-files') !== undefined ? { maxFiles: toInt(values['max-files'], 'max-files') } : {}),
+        includeNotApplicable: values['include-not-applicable'],
+      });
+      process.stdout.write(values.json ? `${JSON.stringify(report, null, 2)}\n` : `${renderGapReport(report)}\n`);
+
+      if (failOn !== undefined) {
+        const worst = worstSeverity(report);
+        if (worst !== undefined && SEVERITY_ORDER.indexOf(worst) >= SEVERITY_ORDER.indexOf(failOn as Confidence)) {
+          process.stderr.write(`codeisotope: most severe gap is "${worst}", at or above --fail-on "${failOn}"\n`);
+          process.exit(3);
+        }
+      }
+      return;
+    }
+
+    case 'gap-list': {
+      if (values.json) {
+        process.stdout.write(`${JSON.stringify(GAPS, null, 2)}\n`);
+        return;
+      }
+      for (const gap of GAPS) {
+        process.stdout.write(`${gap.id.padEnd(26)} ${gap.severity.padEnd(7)} ${gap.capability}\n`);
+        process.stdout.write(`${''.padEnd(26)} applies when: ${gap.appliesWhen.join(', ')}\n`);
+        if (gap.requiresSignals) {
+          process.stdout.write(`${''.padEnd(26)} and also needs: ${gap.requiresSignals.join(' or ')}\n`);
+        }
+        process.stdout.write(`${''.padEnd(26)} solutions: ${gap.knownSolutions.join(', ')}\n\n`);
       }
       return;
     }
