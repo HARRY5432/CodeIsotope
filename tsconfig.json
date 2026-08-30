@@ -13,8 +13,11 @@
     "exactOptionalPropertyTypes": false,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
-    "declaration": true,
-    "sourceMap": true,
+    // No .d.ts or .map in the published package: this ships a binary, not an importable API, so
+    // declaration files describe nothing a consumer can use and source maps double the download
+    // for a stack trace nobody will read. They were 70 of the 108 files in the first tarball.
+    "declaration": false,
+    "sourceMap": false,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
