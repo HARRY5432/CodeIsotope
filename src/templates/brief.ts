@@ -99,7 +99,22 @@ Hard rules:
 - Several gaps are best closed with no dependency at all -- \`process.on("SIGTERM")\`, \`AbortSignal.timeout()\`, a route returning 200. Prefer those.
 - Prefer the highest health score, but say plainly when a lower-scored option is the better fit and why.
 
-## Step 6 -- report
+## Step 6 -- when a pattern needs explaining, cite real code
+
+Sometimes the answer is not "install this" but "your version is missing something". When you need to show how a mature library handles a case the local code gets wrong:
+
+\`\`\`
+npx --yes codeisotope reference "<capability>" --package <vetted package> --json
+\`\`\`
+
+This returns permalinks into the library's real source, pinned to a commit SHA. Two rules:
+
+- **Quote only from a URL this returned.** You will be able to produce a convincing snippet of \`p-retry\`'s jitter handling from memory, and it will be subtly wrong. Fetch the file or cite the link; never reconstruct it.
+- Sources are health-gated, so anything returned is worth imitating. If \`sources\` is empty, the notes say which candidates were rejected and why -- report that rather than falling back on memory.
+
+\`files[].reasons\` explains why each path was picked. The binary ranks paths only; whether the file actually contains the pattern is yours to check.
+
+## Step 7 -- report
 
 Three sections. Lead with whichever holds the most serious problem: a dependency with a live advisory or a service that loses data on every deploy outranks a hand-rolled CSV parser.
 
@@ -123,7 +138,7 @@ Three sections. Lead with whichever holds the most serious problem: a dependency
 - **Why it applies here** -- the trait and the cited line, so the developer can check the claim.
 - **The smallest fix that closes it** -- the built-in where one exists, otherwise a vetted package.
 
-Mention \`aging\` dependencies in one line as a watch list. Finish with a short list of anything you deliberately left alone, so the developer knows it was considered rather than missed.
+Where you used \`reference\`, link the permalink next to the claim it supports. Mention \`aging\` dependencies in one line as a watch list. Finish with a short list of anything you deliberately left alone, so the developer knows it was considered rather than missed.
 
 ## Do not change code in this pass
 

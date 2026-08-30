@@ -95,3 +95,24 @@ jobs:
       # Offline, so this one is a genuine gate rather than best-effort.
       - name: Check our own missing infrastructure
         run: node dist/cli.js gaps --fail-on high
+
+      # Proves the permalinks the binary emits actually resolve. A reference that 404s is worse
+      # than no reference, and only a live request can catch that.
+      - name: Verify emitted permalinks resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node dist/cli.js reference "retry exponential backoff" --package cockatiel --json > ref.json
+          node -e "
+            const r = JSON.parse(require('fs').readFileSync('ref.json', 'utf8'));
+            const urls = r.sources.flatMap((s) => s.files.map((f) => f.url));
+            if (urls.length === 0) { console.log('no permalinks emitted; nothing to verify'); process.exit(0); }
+            (async () => {
+              for (const url of urls) {
+                const raw = url.replace('https://github.com/', 'https://raw.githubusercontent.com/').replace('/blob/', '/');
+                const res = await fetch(raw);
+                console.log(res.status + '  ' + url);
+                if (!res.ok) process.exit(1);
+              }
+            })();
+          "

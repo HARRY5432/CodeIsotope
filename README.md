@@ -6,13 +6,14 @@ Isotopes are the same element in variants of differing stability — some stable
 
 AI coding assistants write code. They rarely go looking for the mature, widely-adopted repository that already solved the problem — so codebases built with AI quietly accumulate hand-rolled retry loops, `JSON.parse(JSON.stringify())` clones, `Math.random()` session tokens, and `split(',')` CSV parsers. Each one works in the happy path and fails in production.
 
-CodeIsotope closes that gap from three directions. It installs into your project as a `/codeisotope` slash command for whichever AI coding CLI you already use, then:
+CodeIsotope closes that gap from four directions. It installs into your project as a `/codeisotope` slash command for whichever AI coding CLI you already use, then:
 
 - **`scan`** finds capabilities that look hand-implemented,
-- **`audit`** grades the dependencies you already have — the deprecated, archived and quietly-abandoned ones no advisory will ever be filed against, and
-- **`gaps`** reports the infrastructure you have no answer for at all.
+- **`audit`** grades the dependencies you already have — the deprecated, archived and quietly-abandoned ones no advisory will ever be filed against,
+- **`gaps`** reports the infrastructure you have no answer for at all, and
+- **`reference`** points at how healthy libraries solve it, as commit-pinned links to their real source.
 
-All three gather hard evidence on the libraries involved — maintenance, adoption, bus factor, published advisories, licence — so the recommendation is a fact, not a guess.
+All of them gather hard evidence — maintenance, adoption, bus factor, published advisories, licence — so the recommendation is a fact, not a guess.
 
 ```
 npx codeisotope init      # install the slash command into this project
@@ -25,8 +26,8 @@ CodeIsotope is two halves with a hard line between them:
 
 | | Does | Never does |
 |---|---|---|
-| **The binary** (`codeisotope`) | Fingerprints the code, grades your dependencies, queries npm / GitHub / deps.dev / OpenSSF, scores health | Judge whether a finding is real, or pick a replacement |
-| **The host model** (your AI CLI) | Reads the flagged code, confirms or discards each lead, chooses and vets replacements, writes the report | Invent a package from memory |
+| **The binary** (`codeisotope`) | Fingerprints the code, grades your dependencies, reports what is missing, queries npm / GitHub / deps.dev / OpenSSF, scores health, pins permalinks to a commit | Judge whether a finding is real, pick a replacement, or explain a pattern |
+| **The host model** (your AI CLI) | Reads the flagged code, confirms or discards each lead, chooses and vets replacements, reads the referenced source, writes the report | Invent a package or a code snippet from memory |
 
 That split is the whole design. The model supplies judgement — it can tell a real retry loop from an incidental `for` loop with a `setTimeout` in it. The binary supplies facts that cannot be hallucinated — every recommended package is verified to exist, with real download counts and a real last-commit date. The slash command tells the model, in as many words, never to recommend anything that did not come back from `codeisotope vet`.
 
@@ -73,6 +74,10 @@ codeisotope gaps --fail-on high       # exit 3 in CI on any high-severity gap
 
 codeisotope vet "csv parser quoted fields" --seed papaparse --seed csv-parse
 codeisotope vet --package lru-cache --package quick-lru
+
+codeisotope reference "retry exponential backoff jitter" --package p-retry
+codeisotope reference "csv parser quoted fields" --limit 2
+
 codeisotope detectors                 # list every detector and what it matches
 codeisotope gap-list                  # list every gap and the traits it applies to
 ```
@@ -186,6 +191,38 @@ The fix is `src/gaps/mask.ts`, which splits each line into two views. Comments a
 
 `--fail-on high|medium|low` exits 3.
 
+## Citing real code
+
+Sometimes the answer is not "install this" but "your version is missing something". `reference` points at how a healthy library actually does it:
+
+```
+$ codeisotope reference "retry exponential backoff jitter" --package cockatiel
+
+  cockatiel@4.0.0  C 55/100  MIT
+     cockatiel @ f475a690ee (master)
+
+     src/backoff/ExponentialBackoff.ts  2 KB
+       filename matches exponential, backoff; directory matches backoff
+       https://github.com/connor4312/cockatiel/blob/f475a690eedbb9dc.../src/backoff/ExponentialBackoff.ts
+```
+
+Ask any model how `p-retry` implements jitter and it will produce a confident, plausible, invented snippet. That is the problem this solves: the binary contributes **permalinks verified to exist, pinned to a commit SHA**. Not a branch — `blob/main/src/index.js` silently means something different next week, and a line number means something different the moment anyone edits above it. Resolving HEAD once and pinning every path to that commit produces citations that stay correct.
+
+Sources are health-gated at 55/100, and deprecated or archived repos are refused outright. A reference implementation is advice to imitate someone's code, so pointing at an abandoned project is actively harmful — the reader copies patterns from a codebase that lost its maintainers years ago. Asked for a retry reference from `async-retry` and `request`, the answer is no sources and an explanation:
+
+```
+note No healthy reference found. Rejected: async-retry (health 46/100, below the 55 needed
+     to be worth imitating); request (deprecated by its maintainers). Copying patterns from
+     an unmaintained project is worse than having no reference.
+```
+
+The binary ranks **paths only** — never contents. Deciding what a file does requires reading it, which is the model's job; narrowing a 622-file monorepo to the four files worth opening is the binary's. Every ranked file states why it was picked, and when nothing scores above zero the answer is "the tree could not be narrowed" rather than an arbitrary `src/index.js`.
+
+Two path-ranking rules earned their place by being wrong first:
+
+- **`lib/` is ambiguous.** For a TypeScript project it is compiled output of `src/`; for `csv-parse` it is the authored source. The test has to be *sibling-scoped* — is there a `src/` next to *this* `lib/` — not repo-global. A first cut asked "does the repo contain any `src/` anywhere", and node-csv's `demo/webpack/src/` suppressed the real parser, leaving a `rollup.config.js` as the top result.
+- **Monorepo members are not interchangeable.** node-csv publishes `csv-parse`, `csv-stringify` and `csv-generate` from one repo. Asked for a parser reference, the first version returned four files from the stringifier's samples directory. Files outside the package being referenced are now rejected rather than merely down-ranked.
+
 ## How the health score works
 
 Six weighted signals, 0–100:
@@ -255,7 +292,7 @@ Zero runtime dependencies, so `npx codeisotope` installs in under a second and c
 ```bash
 npm install
 npm run dev -- scan      # runs src/ directly via Node's native TypeScript support
-npm test                 # 70 tests, all offline
+npm test                 # 90 tests, all offline
 npm run typecheck
 npm run build
 ```
