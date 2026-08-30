@@ -20,7 +20,6 @@
   "bin": {
     "codeisotope": "dist/cli.js"
   },
-  "main": "dist/index.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/HARRY5432/CodeIsotope.git"
