@@ -2,12 +2,13 @@
 import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { setCacheEnabled } from './lib/http.ts';
-import { renderAuditReport, renderFingerprint, renderGapReport, renderVetReport } from './lib/render.ts';
+import { renderAuditReport, renderFingerprint, renderGapReport, renderReferenceReport, renderVetReport } from './lib/render.ts';
 import { TOOL_VERSION } from './lib/version.ts';
 import { runInit } from './commands/init.ts';
 import { auditDependencies, worstVerdict } from './audit/audit.ts';
 import { findGaps, worstSeverity } from './gaps/gaps.ts';
 import { GAPS } from './gaps/catalog.ts';
+import { findReferences } from './reference/reference.ts';
 import { buildFingerprint } from './scan/fingerprint.ts';
 import { DETECTORS } from './scan/detectors/index.ts';
 import { vet } from './vet/evidence.ts';
@@ -33,6 +34,8 @@ const OPTIONS = {
   dev: { type: 'boolean', default: false },
   'fail-on': { type: 'string' },
   'include-not-applicable': { type: 'boolean', default: false },
+  'files-per-source': { type: 'string' },
+  'include-unhealthy': { type: 'boolean', default: false },
 } as const;
 
 const HELP = `codeisotope ${TOOL_VERSION} -- find the mature repos your codebase reinvented by hand.
@@ -53,6 +56,9 @@ USAGE
   codeisotope vet <query> [--json] [--package <name>]... [--seed <name>]... [--ecosystem npm] [--limit N]
       Gather hard evidence on candidate packages: maintenance, adoption, bus factor, advisories, licence.
 
+  codeisotope reference <query> [--json] [--package <name>]... [--seed <name>]... [--limit N]
+      Point at how healthy libraries solve this, as commit-pinned permalinks to their real source.
+
   codeisotope detectors            List every detector and what it looks for.
   codeisotope gap-list             List every gap and the project traits it applies to.
 
@@ -71,6 +77,12 @@ GAPS
   --include-not-applicable   Show the gaps that were skipped, and which traits they need.
   A gap is only ever reported when the project has a trait that makes it relevant, and every
   reported gap cites the source lines that justified it.
+
+REFERENCE
+  --files-per-source N   How many files to surface per repository (default 4).
+  --include-unhealthy    Also reference sources that failed the health gate, saying why.
+  Sources are health-gated: copying patterns from an abandoned project is worse than no reference.
+  Links are pinned to a commit SHA, so they cannot drift. The binary points; you read.
 
 NOTES
   No API keys are required. GitHub requests use GITHUB_TOKEN, GH_TOKEN, or your local \`gh\` login
@@ -211,6 +223,24 @@ async function main(): Promise<void> {
         dryRun: values['dry-run'],
       });
       process.stdout.write(values.json ? `${JSON.stringify(result, null, 2)}\n` : `${result.report}\n`);
+      return;
+    }
+
+    case 'reference': {
+      const query = positionals.slice(1).join(' ').trim();
+      const exact = values.package ?? [];
+      if (!query && exact.length === 0) fail('reference needs a query or at least one --package', 2);
+      const report = await findReferences(query || exact.join(', '), {
+        ...(exact.length > 0 ? { packages: exact } : {}),
+        ...(values.seed ? { seeds: values.seed } : {}),
+        ecosystem: (values.ecosystem ?? 'npm') as Ecosystem,
+        ...(toInt(values.limit, 'limit') !== undefined ? { limit: toInt(values.limit, 'limit') } : {}),
+        ...(toInt(values['files-per-source'], 'files-per-source') !== undefined
+          ? { filesPerSource: toInt(values['files-per-source'], 'files-per-source') }
+          : {}),
+        includeUnhealthy: values['include-unhealthy'],
+      });
+      process.stdout.write(values.json ? `${JSON.stringify(report, null, 2)}\n` : `${renderReferenceReport(report)}\n`);
       return;
     }
 

@@ -1,4 +1,4 @@
-import type { AuditReport, AuditedDep, DepVerdict, Fingerprint, GapReport, HealthVerdict, PackageEvidence, VetReport } from './types.ts';
+import type { AuditReport, AuditedDep, DepVerdict, Fingerprint, GapReport, HealthVerdict, PackageEvidence, ReferenceReport, VetReport } from './types.ts';
 
 const useColor = process.stdout.isTTY === true && !process.env.NO_COLOR;
 const c = (code: string) => (s: string) => (useColor ? `\u001b[${code}m${s}\u001b[0m` : s);
@@ -200,5 +200,46 @@ export function renderGapReport(report: GapReport): string {
   if (report.notApplicable.length > 0) {
     out.push(dim(`Not applicable to this project: ${report.notApplicable.map((n) => n.capability).join('; ')}`));
   }
+  return out.join('\n');
+}
+
+function formatSize(bytes: number): string {
+  if (bytes <= 0) return '';
+  return bytes >= 1024 ? `${Math.round(bytes / 1024)} KB` : `${bytes} B`;
+}
+
+export function renderReferenceReport(report: ReferenceReport): string {
+  const out: string[] = [];
+  out.push(bold(`CodeIsotope reference: ${report.query}`));
+  out.push(dim(`${report.sources.length} source${report.sources.length === 1 ? '' : 's'}, pinned to a commit`));
+  out.push('');
+
+  for (const note of report.notes) out.push(`  ${yellow('note')} ${note}`);
+  if (report.notes.length > 0) out.push('');
+
+  if (report.sources.length === 0) {
+    out.push(dim('  nothing to show'));
+    return out.join('\n');
+  }
+
+  for (const source of report.sources) {
+    const grade = GRADE_COLOR[source.health.grade](`${source.health.grade} ${source.health.score}/100`);
+    const version = source.version ? dim(`@${source.version}`) : '';
+    out.push(`  ${bold(source.package)}${version}  ${grade}  ${dim(source.license ?? 'no licence')}`);
+    out.push(`     ${source.health.summary}`);
+    out.push(dim(`     ${source.slug} @ ${source.commit.slice(0, 10)} (${source.defaultBranch})`));
+    out.push('');
+
+    for (const file of source.files) {
+      const size = formatSize(file.size);
+      out.push(`     ${cyan(file.path)}${size ? dim(`  ${size}`) : ''}`);
+      out.push(dim(`       ${file.reasons.join('; ')}`));
+      out.push(`       ${file.url}`);
+    }
+    if (source.note) out.push(`     ${yellow(source.note)}`);
+    out.push('');
+  }
+
+  out.push(dim('Links are pinned to a commit, so they will not drift. Read the code before adopting a pattern from it.'));
   return out.join('\n');
 }
