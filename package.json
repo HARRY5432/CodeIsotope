@@ -1,6 +1,6 @@
 {
   "name": "codeisotope",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Finds the mature, battle-tested repos your AI-written codebase reinvented by hand, and grades the dependencies it already has.",
   "keywords": [
     "ai",

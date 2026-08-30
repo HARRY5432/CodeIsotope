@@ -292,7 +292,7 @@ Zero runtime dependencies, so `npx codeisotope` installs in under a second and c
 ```bash
 npm install
 npm run dev -- scan      # runs src/ directly via Node's native TypeScript support
-npm test                 # 90 tests, all offline
+npm test                 # 89 tests, all offline
 npm run typecheck
 npm run build
 ```
