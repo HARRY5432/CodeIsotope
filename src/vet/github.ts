@@ -164,3 +164,69 @@ export async function fetchRepoEvidenceMany(slugs: readonly string[]): Promise<M
 export async function isAuthenticated(): Promise<boolean> {
   return (await githubToken()) !== undefined;
 }
+
+interface RefResponse {
+  object?: { sha?: string };
+}
+
+interface TreeResponse {
+  sha?: string;
+  truncated?: boolean;
+  tree?: Array<{ path?: string; type?: string; size?: number }>;
+}
+
+export interface RepoTreeEntry {
+  path: string;
+  /** Bytes, as reported by the git tree. */
+  size: number;
+}
+
+export interface RepoTree {
+  slug: string;
+  defaultBranch: string;
+  /** The commit every path in this tree is pinned to. */
+  commit: string;
+  entries: RepoTreeEntry[];
+  /** GitHub caps a recursive tree at 100k entries; past that the listing is partial. */
+  truncated: boolean;
+}
+
+/**
+ * List every file in a repo at a specific commit.
+ *
+ * The commit SHA is the point of this function. A link to `blob/main/src/index.js` silently means
+ * something different next week, and a link to a line number means something different the moment
+ * anyone edits the file above it. Resolving HEAD once and pinning every path to that SHA produces
+ * references that stay correct permanently.
+ */
+export async function fetchRepoTree(slug: string): Promise<RepoTree | undefined> {
+  const headers = await ghHeaders();
+  const base = `${API}/repos/${slug}`;
+
+  const repo = await tryJson<RepoResponse & { default_branch?: string }>(base, { headers });
+  const branch = repo?.default_branch;
+  if (!repo?.full_name || !branch) return undefined;
+
+  // Ask the ref endpoint rather than /commits: it returns one small object, and it is the
+  // authoritative answer for "what is the tip of this branch right now".
+  const ref = await tryJson<RefResponse>(`${base}/git/ref/heads/${encodeURIComponent(branch)}`, { headers });
+  const commit = ref?.object?.sha;
+  if (!commit) return undefined;
+
+  const tree = await tryJson<TreeResponse>(`${base}/git/trees/${commit}?recursive=1`, { headers });
+  if (!tree?.tree) return undefined;
+
+  const entries: RepoTreeEntry[] = [];
+  for (const node of tree.tree) {
+    if (node.type !== 'blob' || !node.path) continue;
+    entries.push({ path: node.path, size: node.size ?? 0 });
+  }
+
+  return {
+    slug: repo.full_name,
+    defaultBranch: branch,
+    commit,
+    entries,
+    truncated: tree.truncated === true,
+  };
+}
