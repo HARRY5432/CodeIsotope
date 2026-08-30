@@ -23,7 +23,7 @@ test('the prompt drives every capability the binary exposes', () => {
   // A capability the binary has but the prompt never mentions is unreachable from the slash
   // command, which is how most people will use this. `gaps` shipped without this and was invisible.
   const out = renderFor(TARGETS[0] as (typeof TARGETS)[number]);
-  for (const command of ['scan', 'audit', 'gaps', 'vet']) {
+  for (const command of ['scan', 'audit', 'gaps', 'vet', 'reference']) {
     assert.ok(out.includes(`codeisotope ${command} `), `the prompt never runs \`codeisotope ${command}\``);
   }
 });
