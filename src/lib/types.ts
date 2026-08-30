@@ -188,3 +188,38 @@ export interface GapReport {
   notApplicable: Array<{ gapId: string; capability: string; needsTraits: string[] }>;
   notes: string[];
 }
+
+/** One file in a healthy repository, pinned to a commit so the link cannot rot. */
+export interface ReferenceFile {
+  /** Repo-relative path. */
+  path: string;
+  /** Permalink pinned to a commit SHA, not a branch name. */
+  url: string;
+  size: number;
+  /** Why this file was picked, so the ranking is inspectable. */
+  reasons: string[];
+}
+
+export interface ReferenceSource {
+  /** Package the reference came from. */
+  package: string;
+  version?: string;
+  slug: string;
+  /** The commit every url below is pinned to. */
+  commit: string;
+  defaultBranch: string;
+  /** Health of the source, so a reader knows whether this is worth imitating. */
+  health: { score: number; grade: HealthVerdict['grade']; summary: string };
+  license: string | null;
+  files: ReferenceFile[];
+  /** Set when the repo's file listing was incomplete or gave no usable signal. */
+  note?: string;
+}
+
+export interface ReferenceReport {
+  tool: { name: string; version: string };
+  query: string;
+  generatedAt: string;
+  sources: ReferenceSource[];
+  notes: string[];
+}
