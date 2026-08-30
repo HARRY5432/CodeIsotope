@@ -142,6 +142,7 @@ export interface AuditedDep {
   searchTerms?: string[];
 }
 
+/** Everything `codeisotope audit` reports about the dependencies already installed. */
 export interface AuditReport {
   tool: { name: string; version: string };
   root: string;
@@ -152,5 +153,38 @@ export interface AuditReport {
   deps: AuditedDep[];
   /** Dependencies we could not gather any evidence for, with the reason. */
   unresolved: Array<{ name: string; kind: DepKind; reason: string }>;
+  notes: string[];
+}
+
+/** Infrastructure the project has no answer for at all. */
+export interface MissingCapability {
+  gapId: string;
+  capability: string;
+  severity: Confidence;
+  /** Why this matters, in terms of the concrete failure it prevents. */
+  why: string;
+  /** The project traits that made this gap applicable -- why we think it applies to you. */
+  becauseTraits: string[];
+  /** Where we saw the evidence, so the claim is checkable. */
+  citations: Array<{ file: string; line: number; text: string }>;
+  knownSolutions: string[];
+  /** Feed these to `codeisotope vet`. */
+  searchTerms: string[];
+}
+
+export interface GapReport {
+  tool: { name: string; version: string };
+  root: string;
+  generatedAt: string;
+  /** What we established about the project, and therefore which gaps were even considered. */
+  profile: {
+    traits: string[];
+    scanned: { files: number; durationMs: number };
+  };
+  missing: MissingCapability[];
+  /** Gaps checked and found already handled, with what handles them. */
+  satisfied: Array<{ gapId: string; capability: string; by: string }>;
+  /** Gaps not checked because the project is not that kind of project. */
+  notApplicable: Array<{ gapId: string; capability: string; needsTraits: string[] }>;
   notes: string[];
 }
