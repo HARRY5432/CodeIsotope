@@ -53,12 +53,32 @@ export type Trait =
   | 'cli'                // declares a bin entry
   | 'library'            // published for others to import
   | 'containerised'      // has a Dockerfile or compose file
-  | 'reads-env'          // reads process.env
-  | 'published';         // goes to a public registry
+  | 'reads-env'          // reads process.env or os.environ
+  | 'published'          // goes to a public registry
+  /**
+   * The project is Python. A language trait exists because several gaps are language-specific in
+   * their *solution* even when the problem is universal: a Node service closes its own server on
+   * SIGTERM, whereas a Flask app delegates that to gunicorn, so the two need different advice and
+   * must never receive each other's.
+   */
+  | 'python'
+  | 'javascript';
+
+/** The languages gap detection understands. Used to scope traits, not just to label them. */
+export type Language = 'javascript' | 'python';
 
 export interface GapEvidence {
-  /** Traits established about the project. */
+  /** Every trait established anywhere in the project. Used for reporting. */
   traits: Set<Trait>;
+  /**
+   * Traits established from *each language's own* evidence.
+   *
+   * This separation is load-bearing. A repo with a Flask API and a React frontend establishes
+   * `http-server` from Python and `javascript` from package.json -- and with one global trait set
+   * those combined into JavaScript server advice, telling a project with no Node server to call
+   * `process.on('SIGTERM')`. A language-scoped gap must only see traits its own language earned.
+   */
+  traitsByLanguage: Map<Language, Set<Trait>>;
   /** Lowercased direct + dev dependency names. */
   deps: Set<string>;
   /** Repo-relative paths that exist at the root, lowercased. */
@@ -77,6 +97,16 @@ export interface Gap {
   capability: string;
   /** Report only if the project has at least one of these traits. */
   appliesWhen: Trait[];
+  /**
+   * Scope this gap to one language.
+   *
+   * The JavaScript and Python versions of one gap need different evidence and different advice --
+   * a Node service closes its own server on SIGTERM, whereas a Flask app delegates that to gunicorn
+   * -- so neither may receive the other's. Crucially, `appliesWhen` is then checked against *that
+   * language's own* traits: a repo with a Flask API and a React frontend must not be told to add a
+   * Node SIGTERM handler just because both a server and JavaScript exist somewhere in it.
+   */
+  language?: Language;
   /** Already handled if any of these are dependencies. */
   satisfiedByDeps?: string[];
   /** Already handled if any of these paths exist (checked against allFiles). */
