@@ -214,6 +214,42 @@ function formatSize(bytes: number): string {
   return bytes >= 1024 ? `${Math.round(bytes / 1024)} KB` : `${bytes} B`;
 }
 
+const VERIFY_MARK: Record<string, string> = {
+  exists: green('exists         '),
+  'not-found': red('INVENTED       '),
+  'wrong-ecosystem': red('WRONG REGISTRY '),
+  unsupported: dim('unsupported    '),
+};
+
+/**
+ * Render a verification result.
+ *
+ * Phrased bluntly on purpose. "not-found" is rendered INVENTED because that is what it means when a
+ * model suggested the name: the registry has no record of it, so it came from somewhere other than
+ * reality. A softer word invites the reader to assume a typo.
+ */
+export function renderVerifyResults(
+  results: ReadonlyArray<{ name: string; status: string; detail: string; version?: string }>,
+  decided: { ecosystem: string; source: string; reason: string },
+): string {
+  const out: string[] = [];
+  out.push(bold(`CodeIsotope verify: ${decided.ecosystem}`));
+  if (decided.source !== 'explicit') out.push(dim(`  ${decided.reason}`));
+  out.push('');
+  for (const r of results) {
+    out.push(`  ${VERIFY_MARK[r.status] ?? r.status}  ${bold(r.name)}${r.version ? dim(`@${r.version}`) : ''}`);
+    if (r.status !== 'exists') out.push(`      ${r.detail}`);
+  }
+  out.push('');
+  const bad = results.filter((r) => r.status !== 'exists').length;
+  out.push(
+    bad === 0
+      ? green(`All ${results.length} name(s) exist on ${decided.ecosystem}.`)
+      : red(`${bad} of ${results.length} name(s) could not be confirmed. Do not recommend those.`),
+  );
+  return out.join('\n');
+}
+
 export function renderReferenceReport(report: ReferenceReport): string {
   const out: string[] = [];
   out.push(bold(`CodeIsotope reference: ${report.query}`));

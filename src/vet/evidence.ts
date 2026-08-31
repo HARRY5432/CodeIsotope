@@ -7,6 +7,7 @@ import { fetchRepoEvidence, isAuthenticated } from './github.ts';
 import { registryFor } from './registries.ts';
 import { githubSlugFrom, type RegistryFacts } from './registry.ts';
 import { fetchScorecard } from './scorecard.ts';
+import { verifyPackages } from './verify.ts';
 
 /** Seeds written as "structuredClone (Node built-in)" are advice, not packages to vet. */
 const BUILT_IN = /\(([^)]*built-in[^)]*)\)/i;
@@ -19,6 +20,13 @@ export interface VetOptions {
   exact?: string[];
   /** Max packages to gather evidence for. */
   limit?: number;
+  /**
+   * Refuse to report on a name the registry has no record of, instead of grading it on absent data.
+   *
+   * Without this a hallucinated package name produces a card with an F grade and a list of unknown
+   * signals, which reads as "a real but unhealthy package" rather than "this does not exist".
+   */
+  strict?: boolean;
 }
 
 function splitSeeds(seeds: readonly string[]): { packages: string[]; builtIns: string[] } {
@@ -59,7 +67,11 @@ async function gatherOne(name: string, ecosystem: Ecosystem, facts: RegistryFact
   else if (!repo) gaps.push(`GitHub repo ${slug} could not be read (renamed, private, or deleted)`);
 
   const scorecard = slug ? await fetchScorecard(slug) : undefined;
-  if (slug && !scorecard) gaps.push('no OpenSSF Scorecard published for this repo');
+  // A missing Scorecard is deliberately NOT recorded as a gap. It is already handled by the scoring
+  // rule that drops unknown signals from the average, and reporting it here too counted the same
+  // absence twice: once in `gaps` as a shortcoming of the package, and once in the reader's mind as
+  // a security concern. Most small libraries have no Scorecard, and the whole point of dropping
+  // unknowns is to stop punishing them for a metric they never published.
 
   const license = facts?.license ?? depsDev?.licenses?.[0] ?? repo?.license ?? null;
   // Either source claiming deprecation is enough: npm carries the maintainer's own message, while
@@ -122,7 +134,7 @@ export async function gatherEvidence(
  * Every field comes from a public API -- nothing here is inferred or generated.
  */
 export async function vet(query: string, opts: VetOptions = {}): Promise<VetReport> {
-  const { ecosystem = 'npm', seeds = [], exact, limit = 6 } = opts;
+  const { ecosystem = 'npm', seeds = [], exact, limit = 6, strict = false } = opts;
   const notes: string[] = [];
   const registry = registryFor(ecosystem);
 
@@ -155,7 +167,24 @@ export async function vet(query: string, opts: VetOptions = {}): Promise<VetRepo
     return { tool: { name: TOOL_NAME, version: TOOL_VERSION }, query, ecosystem, generatedAt: new Date().toISOString(), candidates: [], notes };
   }
 
-  const candidates = await gatherEvidence(unique, ecosystem);
+  // In strict mode, confirm existence before gathering evidence. A name the registry has never heard
+  // of otherwise produces a graded card full of unknown signals, which reads as "a real but unhealthy
+  // package" rather than "this was invented" -- the exact confusion the strict flag exists to remove.
+  let vetting = unique;
+  if (strict && registry) {
+    const checked = await verifyPackages(unique, ecosystem);
+    const real = checked.filter((c) => c.status === 'exists').map((c) => c.name);
+    for (const bad of checked.filter((c) => c.status !== 'exists')) {
+      notes.push(`REJECTED ${bad.name}: ${bad.detail}`);
+    }
+    if (real.length === 0) {
+      notes.push('No requested package exists in this ecosystem, so nothing was graded.');
+      return { tool: { name: TOOL_NAME, version: TOOL_VERSION }, query, ecosystem, generatedAt: new Date().toISOString(), candidates: [], notes };
+    }
+    vetting = real;
+  }
+
+  const candidates = await gatherEvidence(vetting, ecosystem);
 
   // Scores within a few points of each other are not meaningfully different, so adoption breaks
   // the tie: between two equally healthy libraries, the one the ecosystem already standardised on
