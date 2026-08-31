@@ -1,16 +1,25 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Ecosystem, Manifest } from '../lib/types.ts';
+import {
+  parseCargoToml,
+  parseGemfile,
+  parseGoMod,
+  parsePomXml,
+  parsePyprojectToml,
+  parseRequirementsTxt,
+  type ParsedDeps,
+} from './parse-manifests.ts';
 
 /** Manifest files we know how to read, in the order we report them. */
-const MANIFEST_FILES: Array<{ file: string; ecosystem: Ecosystem }> = [
-  { file: 'package.json', ecosystem: 'npm' },
-  { file: 'requirements.txt', ecosystem: 'pypi' },
-  { file: 'pyproject.toml', ecosystem: 'pypi' },
-  { file: 'Cargo.toml', ecosystem: 'cargo' },
-  { file: 'go.mod', ecosystem: 'go' },
-  { file: 'Gemfile', ecosystem: 'rubygems' },
-  { file: 'pom.xml', ecosystem: 'maven' },
+const MANIFEST_FILES: Array<{ file: string; ecosystem: Ecosystem; parse: (text: string) => ParsedDeps }> = [
+  { file: 'package.json', ecosystem: 'npm', parse: parsePackageJson },
+  { file: 'requirements.txt', ecosystem: 'pypi', parse: parseRequirementsTxt },
+  { file: 'pyproject.toml', ecosystem: 'pypi', parse: parsePyprojectToml },
+  { file: 'Cargo.toml', ecosystem: 'cargo', parse: parseCargoToml },
+  { file: 'go.mod', ecosystem: 'go', parse: parseGoMod },
+  { file: 'Gemfile', ecosystem: 'rubygems', parse: parseGemfile },
+  { file: 'pom.xml', ecosystem: 'maven', parse: parsePomXml },
 ];
 
 async function readIfPresent(path: string): Promise<string | undefined> {
@@ -24,7 +33,7 @@ async function readIfPresent(path: string): Promise<string | undefined> {
   }
 }
 
-function parsePackageJson(text: string): Pick<Manifest, 'dependencies' | 'devDependencies'> {
+function parsePackageJson(text: string): ParsedDeps {
   try {
     const pkg = JSON.parse(text) as {
       dependencies?: Record<string, string>;
@@ -41,43 +50,13 @@ function parsePackageJson(text: string): Pick<Manifest, 'dependencies' | 'devDep
   }
 }
 
-/** Best-effort: enough to know a capability is already covered, not a full TOML/XML parser. */
-function parseLoose(text: string, ecosystem: Ecosystem): Pick<Manifest, 'dependencies' | 'devDependencies'> {
-  const dependencies: Record<string, string> = {};
-  const lines = text.split(/\r?\n/);
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
-
-    if (ecosystem === 'pypi') {
-      const m = /^([A-Za-z0-9._-]+)\s*(?:[=<>!~]{1,2}\s*([^\s;#]+))?/.exec(trimmed);
-      if (m?.[1]) dependencies[m[1]] = m[2] ?? '*';
-    } else if (ecosystem === 'go') {
-      const m = /^(?:require\s+)?([a-z0-9][\w./-]*\/[\w./-]+)\s+(v[\w.+-]+)/i.exec(trimmed);
-      if (m?.[1]) dependencies[m[1]] = m[2] ?? '*';
-    } else if (ecosystem === 'cargo') {
-      const m = /^([A-Za-z0-9_-]+)\s*=\s*[{"]/.exec(trimmed);
-      if (m?.[1]) dependencies[m[1]] = '*';
-    } else if (ecosystem === 'rubygems') {
-      const m = /^gem\s+['"]([^'"]+)['"]/.exec(trimmed);
-      if (m?.[1]) dependencies[m[1]] = '*';
-    } else if (ecosystem === 'maven') {
-      const m = /<artifactId>([^<]+)<\/artifactId>/.exec(trimmed);
-      if (m?.[1]) dependencies[m[1]] = '*';
-    }
-  }
-  return { dependencies, devDependencies: {} };
-}
-
 /** Read every manifest at the scan root. Nested workspace manifests are out of scope for v1. */
 export async function readManifests(root: string): Promise<Manifest[]> {
   const found: Manifest[] = [];
-  for (const { file, ecosystem } of MANIFEST_FILES) {
+  for (const { file, ecosystem, parse } of MANIFEST_FILES) {
     const text = await readIfPresent(join(root, file));
     if (text === undefined) continue;
-    const parsed = file === 'package.json' ? parsePackageJson(text) : parseLoose(text, ecosystem);
-    found.push({ ecosystem, file, ...parsed });
+    found.push({ ecosystem, file, ...parse(text) });
   }
   return found;
 }
