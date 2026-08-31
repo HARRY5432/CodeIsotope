@@ -1,12 +1,20 @@
 import type { Detector } from '../detector-types.ts';
 import { DATA_DETECTORS } from './data.ts';
 import { PLATFORM_DETECTORS } from './platform.ts';
+import { PYTHON_DETECTORS } from './python.ts';
 import { RESILIENCE_DETECTORS } from './resilience.ts';
 import { SECURITY_DETECTORS } from './security.ts';
 import { UTIL_DETECTORS } from './utils.ts';
 
-/** Security first: when several detectors fire on one file, the dangerous ones should surface first. */
+/**
+ * Security first: when several detectors fire on one file, the dangerous ones should surface first.
+ *
+ * Python detectors lead the list because three of them -- SQL built by string formatting, tokens
+ * from `random`, and `pickle.loads` on request data -- are remote-code-execution and injection
+ * classes rather than hardening opportunities.
+ */
 export const DETECTORS: Detector[] = [
+  ...PYTHON_DETECTORS,
   ...SECURITY_DETECTORS,
   ...DATA_DETECTORS,
   ...RESILIENCE_DETECTORS,
