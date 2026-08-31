@@ -1,4 +1,4 @@
-import type { HealthSignal, HealthVerdict, RepoEvidence, SignalVerdict } from '../lib/types.ts';
+import type { Ecosystem, HealthSignal, HealthVerdict, RepoEvidence, SignalVerdict } from '../lib/types.ts';
 import { adoptionSignal, busFactorSignal, licenseSignal, maintenanceSignal, releaseSignal, securitySignal } from './signals.ts';
 
 /** Credit earned per verdict. 'unknown' is excluded from the maths entirely. */
@@ -11,6 +11,15 @@ export interface HealthInput {
   advisories?: string[];
   license?: string | null;
   scorecardScore?: number;
+  /** Download thresholds are per-ecosystem; see ADOPTION_TIERS. Defaults to npm. */
+  ecosystem?: Ecosystem;
+  /** Published packages depending on this one -- the portable adoption signal. */
+  dependents?: { direct?: number; total?: number };
+  /**
+   * When the registry published the newest version. Used as a maintenance fallback where no source
+   * repository is linked, which is common for older PyPI packages.
+   */
+  lastPublishedAt?: string;
 }
 
 function grade(score: number): HealthVerdict['grade'] {
@@ -46,9 +55,9 @@ function buildSummary(score: number, flags: string[], input: HealthInput): strin
  */
 export function scoreHealth(input: HealthInput): HealthVerdict {
   const signals: HealthSignal[] = [
-    maintenanceSignal(input.repo),
-    releaseSignal(input.repo),
-    adoptionSignal(input.weeklyDownloads, input.repo),
+    maintenanceSignal(input.repo, input.lastPublishedAt),
+    releaseSignal(input.repo, input.lastPublishedAt),
+    adoptionSignal(input.weeklyDownloads, input.repo, input.ecosystem ?? 'npm', input.dependents),
     busFactorSignal(input.repo),
     securitySignal(input.advisories, input.scorecardScore),
     licenseSignal(input.license),

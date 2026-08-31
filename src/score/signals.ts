@@ -1,4 +1,4 @@
-import type { HealthSignal, RepoEvidence, SignalVerdict } from '../lib/types.ts';
+import type { Ecosystem, HealthSignal, RepoEvidence, SignalVerdict } from '../lib/types.ts';
 
 const DAY_MS = 86_400_000;
 
@@ -19,9 +19,27 @@ function signal(label: string, weight: number, verdict: SignalVerdict, detail: s
  * Commit volume on the default branch is the honest measure of "is anyone still working on this".
  * GitHub's pushed_at counts activity on any branch, so it is only ever a fallback -- reporting it as
  * "last commit" is how tools end up claiming a repo is fresh when nothing has landed in a year.
+ *
+ * `lastPublishedAt` is the registry's own release date, used only when there is no readable
+ * repository at all. Older PyPI packages frequently link nowhere, and without this the maintenance
+ * signal went `unknown` and dropped out of the average -- which scored `nose` at B/70 despite its
+ * last release being 2015. A release date is weaker evidence than commit history, but "published
+ * eleven years ago" is emphatically not unknown.
  */
-export function maintenanceSignal(repo: RepoEvidence | undefined): HealthSignal {
-  if (!repo) return signal('Maintenance', 25, 'unknown', 'no linked repository to check');
+export function maintenanceSignal(repo: RepoEvidence | undefined, lastPublishedAt?: string): HealthSignal {
+  if (!repo) {
+    const publishedAge = daysSince(lastPublishedAt);
+    if (publishedAge === undefined) return signal('Maintenance', 25, 'unknown', 'no linked repository to check');
+    const years = (publishedAge / 365).toFixed(1);
+    const months = Math.floor(publishedAge / 30);
+    if (publishedAge <= 180) {
+      return signal('Maintenance', 25, 'ok', `no linked repository; newest release published ${months} month(s) ago`);
+    }
+    if (publishedAge <= 540) {
+      return signal('Maintenance', 25, 'weak', `no linked repository; newest release published ${months} months ago`);
+    }
+    return signal('Maintenance', 25, 'bad', `no linked repository; newest release published ${years} years ago -- effectively unmaintained`);
+  }
   if (repo.archived) return signal('Maintenance', 25, 'bad', 'repository is archived or disabled by its owner');
 
   const commits90 = repo.commits.last90d;
@@ -55,8 +73,17 @@ export function maintenanceSignal(repo: RepoEvidence | undefined): HealthSignal 
   return signal('Maintenance', 25, 'bad', `last activity ${age} days ago -- effectively unmaintained`);
 }
 
-export function releaseSignal(repo: RepoEvidence | undefined): HealthSignal {
-  if (!repo) return signal('Release cadence', 15, 'unknown', 'no linked repository to check');
+export function releaseSignal(repo: RepoEvidence | undefined, lastPublishedAt?: string): HealthSignal {
+  if (!repo) {
+    // Same reasoning as maintenance: the registry's own publish date is real evidence about
+    // cadence even when no repository is linked.
+    const days = daysSince(lastPublishedAt);
+    if (days === undefined) return signal('Release cadence', 15, 'unknown', 'no linked repository to check');
+    const months = Math.floor(days / 30);
+    if (days <= 365) return signal('Release cadence', 15, 'ok', `newest release published ${months} month(s) ago`);
+    if (days <= 730) return signal('Release cadence', 15, 'weak', `no release in ${months} months`);
+    return signal('Release cadence', 15, 'bad', `no release in ${(days / 365).toFixed(1)} years`);
+  }
   const count = repo.releases.countLast12mo;
   const latest = repo.releases.latestAt;
   if (count === undefined && latest === undefined) {
@@ -69,16 +96,67 @@ export function releaseSignal(repo: RepoEvidence | undefined): HealthSignal {
   return signal('Release cadence', 15, 'weak', `no releases in the last 12 months${suffix}`);
 }
 
-export function adoptionSignal(weeklyDownloads: number | undefined, repo: RepoEvidence | undefined): HealthSignal {
+/**
+ * Adoption thresholds, per ecosystem.
+ *
+ * Download counts are not comparable across registries and treating them as if they were produces
+ * nonsense: `requests` records ~297M PyPI downloads a week, while a thriving npm package sits
+ * around 1M, because PyPI counts every CI mirror pull and npm does not. One global threshold would
+ * either flatter every Python package to "de facto standard" or condemn every healthy Rust crate.
+ */
+const ADOPTION_TIERS: Record<Ecosystem, { standard: number; strong: number; ok: number; weak: number }> = {
+  // npm publishes true weekly installs and the ecosystem is enormous.
+  npm: { standard: 1_000_000, strong: 100_000, ok: 10_000, weak: 1_000 },
+  // PyPI counts mirrors and CI aggressively, so the same tiers sit roughly 20x higher.
+  pypi: { standard: 20_000_000, strong: 2_000_000, ok: 200_000, weak: 20_000 },
+  // crates.io reports a 90-day count, normalised to a nominal week before it reaches here.
+  cargo: { standard: 2_000_000, strong: 200_000, ok: 20_000, weak: 2_000 },
+  // The Go proxy publishes no download counts at all; these exist only so the type is total.
+  go: { standard: 1_000_000, strong: 100_000, ok: 10_000, weak: 1_000 },
+  maven: { standard: 1_000_000, strong: 100_000, ok: 10_000, weak: 1_000 },
+  nuget: { standard: 1_000_000, strong: 100_000, ok: 10_000, weak: 1_000 },
+  rubygems: { standard: 1_000_000, strong: 100_000, ok: 10_000, weak: 1_000 },
+};
+
+/**
+ * How many published packages depend on this one. Unlike downloads this *is* portable, so the
+ * thresholds are shared: it measures what an ecosystem chose to build on rather than how often a
+ * mirror pulled a tarball.
+ */
+function dependentsVerdict(direct: number): { verdict: SignalVerdict; note: string } {
+  if (direct >= 10_000) return { verdict: 'good', note: 'de facto standard' };
+  if (direct >= 1_000) return { verdict: 'good', note: 'widely depended on' };
+  if (direct >= 100) return { verdict: 'ok', note: '' };
+  if (direct >= 10) return { verdict: 'weak', note: 'modest adoption' };
+  return { verdict: 'bad', note: 'almost nothing depends on this' };
+}
+
+export function adoptionSignal(
+  weeklyDownloads: number | undefined,
+  repo: RepoEvidence | undefined,
+  ecosystem: Ecosystem = 'npm',
+  dependents?: { direct?: number; total?: number },
+): HealthSignal {
+  // Dependents first where we have them: it is the only adoption measure that means the same thing
+  // in every ecosystem, so it keeps cross-ecosystem scores honest.
+  const direct = dependents?.direct;
+  if (direct !== undefined && direct > 0) {
+    const { verdict, note } = dependentsVerdict(direct);
+    const suffix = note ? ` -- ${note}` : '';
+    const downloads = weeklyDownloads !== undefined ? `, ${weeklyDownloads.toLocaleString('en-US')} downloads/week` : '';
+    return signal('Adoption', 20, verdict, `${direct.toLocaleString('en-US')} packages depend on this${downloads}${suffix}`);
+  }
+
+  const tiers = ADOPTION_TIERS[ecosystem];
   if (weeklyDownloads !== undefined) {
     const pretty = weeklyDownloads.toLocaleString('en-US');
-    if (weeklyDownloads >= 1_000_000) return signal('Adoption', 20, 'good', `${pretty} downloads/week -- de facto standard`);
-    if (weeklyDownloads >= 100_000) return signal('Adoption', 20, 'good', `${pretty} downloads/week`);
-    if (weeklyDownloads >= 10_000) return signal('Adoption', 20, 'ok', `${pretty} downloads/week`);
-    if (weeklyDownloads >= 1_000) return signal('Adoption', 20, 'weak', `${pretty} downloads/week -- modest adoption`);
+    if (weeklyDownloads >= tiers.standard) return signal('Adoption', 20, 'good', `${pretty} downloads/week -- de facto standard`);
+    if (weeklyDownloads >= tiers.strong) return signal('Adoption', 20, 'good', `${pretty} downloads/week`);
+    if (weeklyDownloads >= tiers.ok) return signal('Adoption', 20, 'ok', `${pretty} downloads/week`);
+    if (weeklyDownloads >= tiers.weak) return signal('Adoption', 20, 'weak', `${pretty} downloads/week -- modest adoption`);
     return signal('Adoption', 20, 'bad', `${pretty} downloads/week -- you would be an early adopter`);
   }
-  if (!repo) return signal('Adoption', 20, 'unknown', 'no download or star data available');
+  if (!repo) return signal('Adoption', 20, 'unknown', 'no download, dependent or star data available');
   const stars = repo.stars.toLocaleString('en-US');
   if (repo.stars >= 5_000) return signal('Adoption', 20, 'good', `${stars} stars`);
   if (repo.stars >= 500) return signal('Adoption', 20, 'ok', `${stars} stars`);
