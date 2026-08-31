@@ -2,17 +2,19 @@
 import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { setCacheEnabled } from './lib/http.ts';
-import { renderAuditReport, renderFingerprint, renderGapReport, renderReferenceReport, renderVetReport } from './lib/render.ts';
+import { renderAuditReport, renderFingerprint, renderGapReport, renderReferenceReport, renderVerifyResults, renderVetReport } from './lib/render.ts';
 import { TOOL_VERSION } from './lib/version.ts';
 import { runInit } from './commands/init.ts';
 import { auditDependencies, worstVerdict } from './audit/audit.ts';
 import { findGaps, worstSeverity } from './gaps/gaps.ts';
 import { GAPS } from './gaps/catalog.ts';
 import { findReferences } from './reference/reference.ts';
+import { decideEcosystem, isAmbiguous, type EcosystemDecision } from './vet/infer.ts';
+import { verifyPackages } from './vet/verify.ts';
 import { buildFingerprint } from './scan/fingerprint.ts';
 import { DETECTORS } from './scan/detectors/index.ts';
 import { vet } from './vet/evidence.ts';
-import type { Confidence, DepVerdict, Ecosystem } from './lib/types.ts';
+import type { Confidence, DepVerdict } from './lib/types.ts';
 
 // Dogfooding: this is exactly the util.parseArgs that our own argv-parsing detector recommends.
 const OPTIONS = {
@@ -36,6 +38,7 @@ const OPTIONS = {
   'include-not-applicable': { type: 'boolean', default: false },
   'files-per-source': { type: 'string' },
   'include-unhealthy': { type: 'boolean', default: false },
+  strict: { type: 'boolean', default: false },
 } as const;
 
 const HELP = `codeisotope ${TOOL_VERSION} -- find the mature repos your codebase reinvented by hand.
@@ -53,8 +56,11 @@ USAGE
   codeisotope gaps [path] [--json] [--only <ids>] [--include-not-applicable] [--fail-on <severity>]
       Report infrastructure the project has no answer for, gated on what kind of project it is.
 
-  codeisotope vet <query> [--json] [--package <name>]... [--seed <name>]... [--ecosystem npm] [--limit N]
+  codeisotope vet <query> [--json] [--package <name>]... [--seed <name>]... [--ecosystem npm] [--strict]
       Gather hard evidence on candidate packages: maintenance, adoption, bus factor, advisories, licence.
+
+  codeisotope verify <name>... [--json] [--ecosystem npm]
+      Confirm a package name exists in an ecosystem. Exits 4 if any does not.
 
   codeisotope reference <query> [--json] [--package <name>]... [--seed <name>]... [--limit N]
       Point at how healthy libraries solve this, as commit-pinned permalinks to their real source.
@@ -65,6 +71,8 @@ USAGE
 GLOBAL
   --json          Machine-readable output. This is what the slash command consumes.
   --no-cache      Bypass the 6-hour on-disk response cache.
+  --ecosystem     npm | pypi | cargo | go. Inferred from the project's manifests when omitted;
+                  a project declaring two gradeable ecosystems is an error rather than a guess.
   -h, --help      Show this help.  -v, --version   Print the version.
 
 AUDIT
@@ -77,6 +85,12 @@ GAPS
   --include-not-applicable   Show the gaps that were skipped, and which traits they need.
   A gap is only ever reported when the project has a trait that makes it relevant, and every
   reported gap cites the source lines that justified it.
+
+VET AND VERIFY
+  --strict               Refuse to grade a name the registry has no record of. Without this, an
+                         invented name gets an F and a column of unknowns, which reads as a real
+                         but unhealthy package rather than as fiction.
+  \`verify\` exits 4 when a name cannot be confirmed, so a model or a CI step can branch on it.
 
 REFERENCE
   --files-per-source N   How many files to surface per repository (default 4).
@@ -102,6 +116,20 @@ function toInt(value: string | undefined, label: string): number | undefined {
   const n = Number.parseInt(value, 10);
   if (!Number.isFinite(n) || n <= 0) fail(`--${label} must be a positive integer, got "${value}"`, 2);
   return n;
+}
+
+/**
+ * Decide which registry to query, and refuse rather than guess when the project is ambiguous.
+ *
+ * Guessing is what produced the worst bug this tool has had: `vet --package tenacity` in a Python
+ * project returned the abandoned npm styleguide generator of the same name, graded F 18/100, with no
+ * indication the registry might be wrong. A wrong answer wearing a health score is worse than an
+ * error, because the error is obviously an error.
+ */
+async function resolveEcosystem(explicit: string | undefined): Promise<EcosystemDecision> {
+  const decided = await decideEcosystem(process.cwd(), explicit);
+  if (isAmbiguous(decided)) fail(decided.message, 2);
+  return decided;
 }
 
 async function main(): Promise<void> {
@@ -205,13 +233,42 @@ async function main(): Promise<void> {
       const query = positionals.slice(1).join(' ').trim();
       const exact = values.package ?? [];
       if (!query && exact.length === 0) fail('vet needs a query or at least one --package', 2);
+      const decided = await resolveEcosystem(values.ecosystem);
       const report = await vet(query || exact.join(', '), {
-        ecosystem: (values.ecosystem ?? 'npm') as Ecosystem,
+        ecosystem: decided.ecosystem,
         ...(values.seed ? { seeds: values.seed } : {}),
         ...(exact.length > 0 ? { exact } : {}),
         ...(toInt(values.limit, 'limit') !== undefined ? { limit: toInt(values.limit, 'limit') } : {}),
+        strict: values.strict,
       });
+      // Say where the ecosystem came from when it was not asked for, so a reader can tell an
+      // inferred registry from a chosen one.
+      if (decided.source !== 'explicit') report.notes.unshift(decided.reason);
       process.stdout.write(values.json ? `${JSON.stringify(report, null, 2)}\n` : `${renderVetReport(report)}\n`);
+      return;
+    }
+
+    case 'verify': {
+      const names = [...(values.package ?? []), ...positionals.slice(1)].map((n) => n.trim()).filter(Boolean);
+      if (names.length === 0) fail('verify needs at least one package name', 2);
+      const decided = await resolveEcosystem(values.ecosystem);
+      const results = await verifyPackages(names, decided.ecosystem);
+      const ok = results.every((r) => r.status === 'exists');
+
+      if (values.json) {
+        process.stdout.write(`${JSON.stringify({
+          tool: { name: 'codeisotope', version: TOOL_VERSION },
+          ecosystem: decided.ecosystem,
+          generatedAt: new Date().toISOString(),
+          results,
+          ok,
+        }, null, 2)}\n`);
+      } else {
+        process.stdout.write(`${renderVerifyResults(results, decided)}\n`);
+      }
+
+      // Exit 4 so a model or a CI step can branch on "a name was invented" without parsing output.
+      if (!ok) process.exit(4);
       return;
     }
 
@@ -231,16 +288,18 @@ async function main(): Promise<void> {
       const query = positionals.slice(1).join(' ').trim();
       const exact = values.package ?? [];
       if (!query && exact.length === 0) fail('reference needs a query or at least one --package', 2);
+      const decided = await resolveEcosystem(values.ecosystem);
       const report = await findReferences(query || exact.join(', '), {
         ...(exact.length > 0 ? { packages: exact } : {}),
         ...(values.seed ? { seeds: values.seed } : {}),
-        ecosystem: (values.ecosystem ?? 'npm') as Ecosystem,
+        ecosystem: decided.ecosystem,
         ...(toInt(values.limit, 'limit') !== undefined ? { limit: toInt(values.limit, 'limit') } : {}),
         ...(toInt(values['files-per-source'], 'files-per-source') !== undefined
           ? { filesPerSource: toInt(values['files-per-source'], 'files-per-source') }
           : {}),
         includeUnhealthy: values['include-unhealthy'],
       });
+      if (decided.source !== 'explicit') report.notes.unshift(decided.reason);
       process.stdout.write(values.json ? `${JSON.stringify(report, null, 2)}\n` : `${renderReferenceReport(report)}\n`);
       return;
     }
