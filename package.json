@@ -1,7 +1,7 @@
 {
   "name": "codeisotope",
-  "version": "0.3.0",
-  "description": "Finds the mature, battle-tested repos your AI-written codebase reinvented by hand, and grades the dependencies it already has.",
+  "version": "0.4.0",
+  "description": "Finds the mature, battle-tested libraries your AI-written codebase reinvented by hand, grades the dependencies it already has, and reports what is missing. JavaScript, Python, Rust and Go.",
   "keywords": [
     "ai",
     "codebase",
@@ -10,7 +10,11 @@
     "github",
     "claude-code",
     "opencode",
-    "cursor"
+    "cursor",
+    "python",
+    "rust",
+    "golang",
+    "supply-chain"
   ],
   "license": "MIT",
   "type": "module",

@@ -54,6 +54,10 @@ This grades every direct dependency and returns a \`verdict\` per package:
 
 \`reasons\` says exactly why. Where the maintainer named a successor in the deprecation message it comes back as \`maintainerSuggestion\`; when \`builtIn\` is true the answer is to delete the dependency and use the platform feature, not to swap in another package.
 
+**JavaScript, Python, Rust and Go are all graded**, each against its own registry. \`profile.ecosystems\` lists what was found, and every dependency carries its own \`ecosystem\` -- a project with both a \`package.json\` and a \`requirements.txt\` is the normal case, not an edge case. An ecosystem we cannot grade appears in \`unresolved\` with the reason, never silently as "clean".
+
+Read the numbers in the ecosystem's own terms. Download counts are not comparable across registries -- PyPI counts every CI mirror pull, so 2M/week there is ordinary while on npm it is excellent -- which is why \`dependents\` (how many published packages depend on this one) is the figure to trust when both are present.
+
 **The audit deliberately does not choose replacements.** That part is yours: read the code that actually imports the dependency, work out which of its features are in use, then vet a replacement that covers them. \`searchTerms\` is a starting point, not an answer.
 
 ## Step 4 -- find what the project has no answer for
@@ -88,7 +92,9 @@ For each surviving scan candidate, each \`replace\`/\`weak\` dependency worth ac
 npx --yes codeisotope vet "<capability>" --seed <knownSolution> --seed <knownSolution> --json
 \`\`\`
 
-This returns real data for each package -- weekly downloads, last commit, release cadence, contributor concentration, published advisories, licence, OpenSSF Scorecard -- plus a 0-100 health score and \`flags\`.
+For a non-JavaScript project add \`--ecosystem pypi|cargo|go\`. PyPI and the Go proxy have no usable search API, so those must be named explicitly with \`--package\`; npm and crates.io can be searched from a query.
+
+This returns real data for each package -- weekly downloads, dependent count, last commit, release cadence, contributor concentration, published advisories, licence, OpenSSF Scorecard -- plus a 0-100 health score and \`flags\`.
 
 Hard rules:
 

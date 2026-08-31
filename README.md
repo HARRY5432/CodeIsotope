@@ -13,7 +13,7 @@ CodeIsotope closes that gap from four directions. It installs into your project 
 - **`gaps`** reports the infrastructure you have no answer for at all, and
 - **`reference`** points at how healthy libraries solve it, as commit-pinned links to their real source.
 
-All of them gather hard evidence — maintenance, adoption, bus factor, published advisories, licence — so the recommendation is a fact, not a guess.
+`audit`, `vet` and `reference` work across **JavaScript, Python, Rust and Go**. All of them gather hard evidence — maintenance, adoption, bus factor, published advisories, licence — so the recommendation is a fact, not a guess.
 
 ```
 npx codeisotope init      # install the slash command into this project
@@ -74,9 +74,12 @@ codeisotope gaps --fail-on high       # exit 3 in CI on any high-severity gap
 
 codeisotope vet "csv parser quoted fields" --seed papaparse --seed csv-parse
 codeisotope vet --package lru-cache --package quick-lru
+codeisotope vet --package httpx --ecosystem pypi        # Python, Rust and Go too
+codeisotope vet "async runtime" --ecosystem cargo
 
 codeisotope reference "retry exponential backoff jitter" --package p-retry
 codeisotope reference "csv parser quoted fields" --limit 2
+codeisotope reference "task scheduling" --package tokio --ecosystem cargo
 
 codeisotope detectors                 # list every detector and what it matches
 codeisotope gap-list                  # list every gap and the traits it applies to
@@ -116,13 +119,13 @@ CodeIsotope audit
 6 direct dependencies | ecosystem: npm
 4 replace | 2 healthy
 
-  replace  request@^2.88.2  F 25/100
+  replace  request@^2.88.2 [npm]  F 25/100
             deprecated by its maintainers: request has been deprecated, see .../issues/3142
             1 known advisory/advisories on the current version: GHSA-p8p7-x288-28g6
             no commits in 79 months -- effectively unmaintained
             find a replacement: codeisotope vet "Simplified HTTP client"
 
-  replace  left-pad@^1.3.0  F 25/100
+  replace  left-pad@^1.3.0 [npm]  F 25/100
             deprecated by its maintainers: use String.prototype.padStart()
             repository is archived -- it will receive no further fixes, including security fixes
             maintainer says use String.prototype.padStart() -- drop the dependency
@@ -143,6 +146,37 @@ Three things make the verdict different from a health score:
 Direct dependencies only. Transitive advisories are `npm audit`'s job and it does them well; the gap nobody covers is the dependency *you chose* that has been abandoned for three years, because no advisory will ever be filed against it.
 
 `--fail-on replace|weak|aging` exits 3, so it works as a CI gate.
+
+### Four languages, one command
+
+`audit` grades **JavaScript/TypeScript, Python, Rust and Go**, each against its own registry:
+
+| Ecosystem | Manifests read | Registry |
+|---|---|---|
+| npm | `package.json` | registry.npmjs.org |
+| PyPI | `requirements.txt`, `pyproject.toml` (PEP 621 and Poetry) | pypi.org |
+| crates.io | `Cargo.toml` | crates.io |
+| Go | `go.mod` | proxy.golang.org |
+
+Ruby and Maven manifests are parsed and reported, but their packages cannot be graded yet — they appear in `unresolved` with the reason, never silently as "clean".
+
+Every dependency carries the ecosystem of the manifest it came from, which matters more than it sounds:
+
+```
+7 direct dependencies | ecosystems: go, pypi
+  note Polyglot project: 3 go, 4 pypi. Each dependency is graded against its own registry.
+
+  weak   uvicorn@* [pypi]      B 83/100
+  aging  httpx@>=0.27 [pypi]   F 33/100
+```
+
+An earlier version picked one ecosystem for the whole project. A repo with both a `pyproject.toml` and a `go.mod` therefore looked up `github.com/gin-gonic/gin` on PyPI, found nothing, and reported three healthy Go modules as `F 0/100` with *"no licence detected — legally unsafe to ship"*. Polyglot repositories are the normal case, so dependencies are keyed by ecosystem **and** name — `redis` exists on both npm and PyPI as unrelated packages.
+
+Three more things the multi-language work had to get right:
+
+- **Download counts are not comparable across registries.** `requests` records ~297M PyPI downloads a week against ~1M for a thriving npm package, because PyPI counts every CI mirror pull. Thresholds are per-ecosystem, and **dependent counts** — how many published packages depend on this one — are preferred wherever available, because that number means the same thing everywhere.
+- **A prerelease is not what a package gets graded on.** deps.dev reports `isDefault` for httpx's `1.0.0.dev5`, which has 34 dependents against 38,576 for the stable `0.28.1` people actually install. Grading the prerelease scored one of Python's most-used HTTP clients at F 33/100 with "modest adoption".
+- **Older PyPI packages often link no repository at all.** Without a fallback the maintenance signal went `unknown` and dropped out of the average, which scored `nose` at B 70/100 despite its last release being 2015. The registry's own publish date now stands in: *"newest release published 11.3 years ago — effectively unmaintained"*.
 
 ## Finding what is missing entirely
 
@@ -229,8 +263,8 @@ Six weighted signals, 0–100:
 
 | Signal | Weight | Measures |
 |---|---|---|
-| Maintenance | 25 | Commits on the **default branch** in the last 90 days, then true last-commit age |
-| Adoption | 20 | Weekly npm downloads, falling back to stars |
+| Maintenance | 25 | Commits on the **default branch** in the last 90 days, then true last-commit age, then the registry's publish date |
+| Adoption | 20 | Dependent count, then downloads at per-ecosystem thresholds, then stars |
 | Release cadence | 15 | Releases in the last 12 months, attributed per-package in monorepos |
 | Bus factor | 15 | Share of commits held by the top 3 contributors |
 | Security | 15 | Published advisories on the current version, then OpenSSF Scorecard |
@@ -251,13 +285,16 @@ All free, all keyless, no account required:
 |---|---|
 | [npm registry](https://registry.npmjs.org) | Search, versions, licences, deprecation |
 | [npm downloads API](https://api.npmjs.org) | Weekly download counts |
-| [deps.dev](https://deps.dev) (Google Open Source Insights) | Advisories, deprecation, licences, canonical source repo |
-| [GitHub REST API](https://docs.github.com/rest) | Commits, releases, contributors, archived status |
+| [PyPI JSON API](https://pypi.org) | Versions, licences, yanked releases, project links |
+| [crates.io API](https://crates.io) | Search, versions, licences, 90-day downloads |
+| [Go module proxy](https://proxy.golang.org) | Latest version and its publish date |
+| [deps.dev](https://deps.dev) (Google Open Source Insights) | Advisories, deprecation, licences, canonical source repo, dependent counts — across every ecosystem |
+| [GitHub REST API](https://docs.github.com/rest) | Commits, releases, contributors, archived status, commit-pinned trees |
 | [OpenSSF Scorecard](https://securityscorecards.dev) | Supply-chain security posture |
 
-GitHub is the only rate-limited one: 60 requests/hour unauthenticated, 5,000 with a token. CodeIsotope picks up `GITHUB_TOKEN`, `GH_TOKEN`, or your local `gh auth login` automatically, and tells you in the report when it is running without one. Responses are cached on disk for 6 hours (`--no-cache` to bypass).
+GitHub is the only rate-limited one that matters: 60 requests/hour unauthenticated, 5,000 with a token. CodeIsotope picks up `GITHUB_TOKEN`, `GH_TOKEN`, or your local `gh auth login` automatically, and tells you in the report when it is running without one. Responses are cached on disk for 6 hours (`--no-cache` to bypass).
 
-> **Note on Google Search:** the Google Custom Search JSON API is closed to new customers and shuts down on 1 January 2027, so it is not usable here. It also is not needed — GitHub and npm are the authoritative indexes for this problem, and the semantic half of the search is done by the LLM that is already running.
+Two sources were tried and rejected. **pypistats.org** returns `429 RATE LIMIT EXCEEDED` on the second consecutive request, so it cannot be a dependency of an audit that checks 40 packages — deps.dev dependent counts replaced it, and are a better signal anyway. **Google Custom Search** is closed to new customers and shuts down on 1 January 2027; it is also unnecessary, since the registries are the authoritative indexes and the semantic half of the search is done by the LLM already running.
 
 ## Detectors
 
@@ -292,7 +329,7 @@ Zero runtime dependencies, so `npx codeisotope` installs in under a second and c
 ```bash
 npm install
 npm run dev -- scan      # runs src/ directly via Node's native TypeScript support
-npm test                 # 89 tests, all offline
+npm test                 # 122 tests, all offline
 npm run typecheck
 npm run build
 ```
@@ -303,8 +340,8 @@ Requires Node 20.11+ **to run**; Node 22+ to develop, since the test suite is Ty
 
 ## Status
 
-v0.3.0. Scanning and gap detection are JavaScript/TypeScript; auditing and vetting are npm-first, and other ecosystems are detected and reported but must be vetted by explicit `--package`.
+v0.4.0. `audit`, `vet` and `reference` cover **npm, PyPI, crates.io and Go**; Ruby and Maven manifests are parsed and reported but not yet graded. `scan` and `gaps` remain JavaScript/TypeScript only.
 
-All four capabilities from the original plan are in: replace hand-rolled code, flag weak dependencies, report missing infrastructure, and point at reference implementations. Next, in order: more ecosystems for `audit`, and gap detection beyond JS/TS.
+All four capabilities from the original plan are in: replace hand-rolled code, flag weak dependencies, report missing infrastructure, and point at reference implementations. Next: `scan` detectors and `gaps` traits for Python, which is where most AI-written code actually lives.
 
 MIT.

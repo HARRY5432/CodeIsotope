@@ -3,6 +3,67 @@
 All notable changes to CodeIsotope. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-08-30
+
+`audit`, `vet` and `reference` now work on Python, Rust and Go, not just JavaScript.
+
+### Added
+
+- **Multi-ecosystem support.** Dependencies are graded against their own registry: npm, PyPI,
+  crates.io and the Go module proxy. `requirements.txt`, `pyproject.toml` (both PEP 621 and Poetry),
+  `Cargo.toml` and `go.mod` are all read properly. Ruby and Maven manifests are parsed and reported
+  but not yet graded — they appear in `unresolved` with the reason, never silently as "clean".
+
+  Python was the priority because it is where most AI-written code lives. Before this, pointing
+  `audit` at a Python project reported *"pypi packages cannot be vetted in this version"* for every
+  dependency.
+
+- **Dependent counts as the adoption signal.** How many published packages depend on this one, from
+  deps.dev. Unlike downloads this is comparable across ecosystems, which is what makes a single
+  health score meaningful for a polyglot project.
+
+- **A section-aware manifest parser** (`src/scan/parse-manifests.ts`) replacing the line-at-a-time
+  matcher. Understands Cargo's four dependency-table forms, PEP 508 extras and environment markers,
+  Go's `// indirect` marks and `exclude` blocks, Gemfile group blocks, and Maven test scope.
+
+### Fixed
+
+- **Polyglot projects were graded against a single registry.** `audit` picked one ecosystem for the
+  whole project, so a repo with both a `pyproject.toml` and a `go.mod` looked up
+  `github.com/gin-gonic/gin` on PyPI, found nothing, and reported three healthy Go modules as
+  `F 0/100` with *"no licence detected — legally unsafe to ship"*. Dependencies now carry the
+  ecosystem of the manifest they came from, and are keyed by ecosystem **and** name — `redis` exists
+  on both npm and PyPI as unrelated packages.
+
+- **Packages were graded on prereleases.** deps.dev reports `isDefault` for httpx's `1.0.0.dev5`,
+  which has 34 dependents against 38,576 for the stable `0.28.1` people actually install. That
+  scored one of Python's most-used HTTP clients at `F 33/100` with "modest adoption". The newest
+  stable release is now preferred, in both PEP 440 and SemVer conventions.
+
+- **Packages with no linked repository scored as if unjudged.** The maintenance signal went
+  `unknown` and dropped out of the average — correct behaviour on missing data, wrong input, since
+  the registry's publish date was already fetched. `nose` scored `B 70/100` despite its last release
+  being 2015; it now reads *"newest release published 11.3 years ago — effectively unmaintained"*.
+
+- `Cargo.toml` parsing reported `name`, `version`, `edition`, `license` and `path` as dependencies,
+  and filed `[dev-dependencies]` as runtime ones.
+
+### Changed
+
+- Download thresholds are **per-ecosystem**. `requests` records ~297M PyPI downloads a week against
+  ~1M for a thriving npm package, because PyPI counts every CI mirror pull. One global threshold
+  either flattered every Python package or condemned every healthy Rust crate.
+
+- Audit reports name every ecosystem present rather than just the first manifest's, and tag each
+  dependency with its own. The old single-ecosystem header is exactly what let the PyPI/Go mixup hide
+  in plain sight.
+
+- **pypistats.org was tried and rejected** as the Python download source: it returns
+  `429 RATE LIMIT EXCEEDED` on the second consecutive request, so it cannot support an audit that
+  checks 40 packages. deps.dev dependent counts replaced it and are a better signal anyway.
+
+  33 new tests, 122 total, all offline.
+
 ## [0.3.0] - 2026-08-30
 
 Completes the four capabilities the tool was planned around.
@@ -114,6 +175,7 @@ Initial release.
 
 - Zero runtime dependencies, so `npx` installs in under a second with no supply-chain surface.
 
+[0.4.0]: https://github.com/HARRY5432/CodeIsotope/releases/tag/v0.4.0
 [0.3.0]: https://github.com/HARRY5432/CodeIsotope/releases/tag/v0.3.0
 [0.2.0]: https://github.com/HARRY5432/CodeIsotope/releases/tag/v0.2.0
 [0.1.0]: https://github.com/HARRY5432/CodeIsotope/releases/tag/v0.1.0
