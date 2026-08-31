@@ -3,6 +3,85 @@
 All notable changes to CodeIsotope. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-08-31
+
+`scan` and `gaps` now understand Python, which is where most AI-written code lives.
+
+### Added
+
+- **11 Python detectors for `scan`.** Not a translation of the JavaScript set: the first three —
+  SQL built by f-string interpolation, `pickle.loads` on request data, and tokens from `random` —
+  are the ones that actually get Python services owned, and none has a JavaScript equivalent worth
+  detecting. They are registered ahead of everything else because they are injection and
+  remote-code-execution classes rather than hardening opportunities.
+
+  Recommendations lead with the standard library wherever it covers the case. Python's is large
+  enough that the right answer is frequently to *delete* code: `secrets`, `hashlib.scrypt`, `csv`,
+  `argparse` and `datetime.fromisoformat` all ship with the interpreter.
+
+- **8 Python gaps.** Six are the Python answer to a problem JavaScript also has; two have no
+  counterpart at all:
+
+  - `py-debug-enabled` — `DEBUG = True` hardcoded. Flask then serves the Werkzeug debugger on any
+    traceback, offering an interactive Python console to whoever triggered the error. That is remote
+    code execution by design; Django's version leaks settings including credentials.
+  - `py-no-production-server` — no gunicorn/uvicorn/waitress declared, so the app is presumably run
+    with `app.run()`. This is also *why Python has no shutdown gap*: a real WSGI server owns SIGTERM,
+    so the correct advice is "configure a production server", not "write a signal handler".
+
+- **A Python masker** (`src/gaps/mask-python.ts`). Docstrings and `#` comments are never evidence —
+  a token finding previously cited `"""Create a session token."""`, the docstring rather than the
+  code. f-strings are handled specially: the literal text is blanked but `{...}` expressions survive,
+  because blanking the whole string would hide `f"... {user_input}"` interpolation, which is exactly
+  the SQL-injection signal most worth keeping.
+
+- **`unless` and `clusterWindow` on the detector contract.** Both exist because the first version
+  accused correct code. `requests.get(url)` is a defect *because* there is no `timeout=`, and with no
+  way to express that the detector flagged calls that passed one; and since a timeout is an argument
+  of its own call, `clusterWindow: 0` was needed so a single correct call could not excuse every
+  incorrect one in the file.
+
+### Fixed
+
+- **Cross-language contamination.** A repo with a Flask API and a React frontend earned
+  `http-server` from Python and `javascript` from `package.json`, and one global trait set combined
+  those into Node server advice — telling a frontend with no server to add a SIGTERM handler and
+  Helmet middleware. Traits are now attributed to the language that earned them, and a scoped gap
+  sees only its own language's traits. That repo went from 12 gaps to 6, all Python.
+
+- **Misleading citations.** Excerpts were chosen first-in-file, so a `pickle.loads(blob)` at line 44
+  was evidenced by `os.environ.get("DEBUG")` at line 15 — the broad `untrusted-source` signal also
+  matches `environ`. Excerpts now anchor on the most precise signal, decisive over required, then
+  take the nearest hit for each other signal. That finding now cites lines 43 and 44, the two
+  adjacent lines that are the vulnerability.
+
+- **The SQL detector flagged parameterised queries** — the exact fix it recommends. `.execute(`
+  was a counted signal, and it fires on safe and unsafe calls alike, so
+  `cursor.execute("... VALUES (%s)", (email,))` reached the threshold. A finding now requires a SQL
+  keyword *plus* an interpolation on the same line.
+
+- **A satisfied gap was reported as not-applicable.** `py-debug-enabled`'s requirement and its
+  defect are the same signal, so a project correctly reading DEBUG from the environment failed the
+  requirement and its good practice went unreported. Satisfaction is now checked before
+  `requiresSignals`.
+
+- Detector suppression is per-ecosystem: a Python detector naming `backoff` must not be silenced by
+  an npm package of the same name, and `attrs`, `redis`, `six` and `mock` all exist on both
+  registries as unrelated packages.
+
+- CodeIsotope reported `auth` as a trait of itself, from `password: ['hash', 'kdf', 'crypto']` in its
+  own synonym table — an object key read as credential handling. Fifth instance of the same
+  code-versus-data class.
+
+### Changed
+
+- `detectors` and `gap-list` name the language of each entry, now that one capability can have an
+  entry per language and the ids alone do not say which files each reads.
+- The installed prompt covers Python and carries the rule that matters most: never translate advice
+  across languages. `helmet` is not a Python answer; `gunicorn` is not a Node one.
+
+  53 new tests, 176 total, all offline.
+
 ## [0.4.0] - 2026-08-30
 
 `audit`, `vet` and `reference` now work on Python, Rust and Go, not just JavaScript.
@@ -175,6 +254,7 @@ Initial release.
 
 - Zero runtime dependencies, so `npx` installs in under a second with no supply-chain surface.
 
+[0.5.0]: https://github.com/HARRY5432/CodeIsotope/releases/tag/v0.5.0
 [0.4.0]: https://github.com/HARRY5432/CodeIsotope/releases/tag/v0.4.0
 [0.3.0]: https://github.com/HARRY5432/CodeIsotope/releases/tag/v0.3.0
 [0.2.0]: https://github.com/HARRY5432/CodeIsotope/releases/tag/v0.2.0

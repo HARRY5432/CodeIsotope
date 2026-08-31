@@ -27,6 +27,8 @@ If a focus area was given, pass it as the path: \`npx --yes codeisotope scan <pa
 
 The output lists \`candidates\`: places where a well-known solved problem looks hand-implemented. Each carries a \`file\`, \`lines\`, \`excerpts\`, \`signalsHit\`, \`confidence\`, \`knownSolutions\` and often a \`note\`. Treat these as leads, not conclusions.
 
+**JavaScript, TypeScript and Python are scanned.** The Python detectors are not translations of the JavaScript ones: SQL built by f-string interpolation, \`pickle.loads\` on request data, and tokens from \`random\` are the three that actually get Python services owned, and none has a JavaScript equivalent. Python's standard library is also large enough that the right answer is frequently to *delete* code rather than add a dependency -- \`secrets\`, \`hashlib.scrypt\`, \`csv\`, \`argparse\` and \`datetime.fromisoformat\` all ship with the interpreter, and appear first in \`knownSolutions\` when they apply.
+
 ## Step 2 -- confirm each candidate yourself
 
 The scanner matches patterns; you read code. For each candidate, open the file around the reported lines and decide:
@@ -70,12 +72,19 @@ npx --yes codeisotope gaps --json
 
 Steps 1-3 look at code that exists. This looks for code that does not: graceful shutdown, request validation, outbound timeouts, rate limiting on auth routes, structured logging, a health check, env validation, a lockfile.
 
-\`profile.traits\` is what the binary established about the project by looking -- \`http-server\`, \`cli\`, \`database\`, \`auth\` and so on. **A gap is only ever reported when a trait makes it relevant**, so a CLI is never told it needs security headers. Each entry in \`missing\` carries:
+\`profile.traits\` is what the binary established about the project by looking -- \`http-server\`, \`cli\`, \`database\`, \`auth\`, and the language traits \`javascript\` and \`python\`. **A gap is only ever reported when a trait makes it relevant**, so a CLI is never told it needs security headers. Each entry in \`missing\` carries:
 
 - \`why\` -- the concrete failure it prevents. Quote this; it is written to be quoted.
 - \`becauseTraits\` -- why the binary thinks this applies to your project.
 - \`citations\` -- the file and line that justified raising it.
 - \`severity\` -- \`high\` means fix before shipping.
+
+**Gaps are scoped per language, and the same problem often has a different answer in each.** A Node service closes its own server on SIGTERM; a Flask app delegates that to gunicorn, which is why Python has a \`py-no-production-server\` gap and no shutdown gap at all. Never carry advice across: \`helmet\` is not a Python answer, and \`gunicorn\` is not a Node one. Traits are attributed to the language that earned them, so a repo with a Flask API and a React frontend gets Python advice for the API only.
+
+Two Python gaps have no JavaScript counterpart and are worth understanding:
+
+- \`py-debug-enabled\` -- \`DEBUG = True\` hardcoded. Flask then serves the Werkzeug debugger on any traceback, which offers an interactive Python console to whoever triggered the error. That is remote code execution, not a hardening suggestion.
+- \`py-no-production-server\` -- no gunicorn/uvicorn/waitress, so the app is presumably run with \`app.run()\`. A development server serves one request at a time and ignores SIGTERM.
 
 Two things to check before you report a gap:
 

@@ -13,7 +13,7 @@ CodeIsotope closes that gap from four directions. It installs into your project 
 - **`gaps`** reports the infrastructure you have no answer for at all, and
 - **`reference`** points at how healthy libraries solve it, as commit-pinned links to their real source.
 
-`audit`, `vet` and `reference` work across **JavaScript, Python, Rust and Go**. All of them gather hard evidence — maintenance, adoption, bus factor, published advisories, licence — so the recommendation is a fact, not a guess.
+`audit`, `vet` and `reference` work across **JavaScript, Python, Rust and Go**; `scan` and `gaps` cover JavaScript and Python. All of them gather hard evidence — maintenance, adoption, bus factor, published advisories, licence — so the recommendation is a fact, not a guess.
 
 ```
 npx codeisotope init      # install the slash command into this project
@@ -59,9 +59,10 @@ With no CLI detected it installs for Claude Code and opencode and tells you it d
 The binary is useful on its own, and `--json` is what the slash command consumes.
 
 ```bash
-codeisotope scan                      # fingerprint the current directory
+codeisotope scan                      # fingerprint the current directory (JS/TS and Python)
 codeisotope scan ./src --json         # machine-readable, scoped to a subtree
 codeisotope scan --only csv-parsing,password-hashing
+codeisotope scan --only py-sql-injection,py-insecure-random
 codeisotope scan --include-suppressed # report even capabilities you already have a library for
 
 codeisotope audit                     # grade every direct dependency
@@ -96,6 +97,25 @@ high    password hashing
         of guesses per second against them. Use a memory-hard KDF (argon2id, scrypt, bcrypt).
         known solutions: @node-rs/argon2, argon2, bcrypt, node:crypto scrypt (built-in)
 ```
+
+The same command on a Python project. This is a real run against a 22-line Flask app — 8 findings, 5 of them high-severity security:
+
+```
+high    building SQL by string formatting
+        app/main.py:30  [py-sql-injection] signals: fstring-sql, sql-keyword
+          30: cur.execute(f"INSERT INTO users (email, pw) VALUES ('{email}', '{pwhash}')")
+        SECURITY: interpolating a value into SQL is injection. A parameterised query --
+        cursor.execute("... WHERE id = %s", (id,)) -- costs nothing and closes it entirely.
+
+high    deserialising untrusted data
+        app/main.py:43  [py-unsafe-deserialize] signals: untrusted-source, pickle-load
+          43: blob = request.get_data()
+          44: state = pickle.loads(blob)
+        SECURITY: pickle.loads, yaml.load and eval all execute arbitrary code by design. Given
+        attacker-controlled bytes this is remote code execution, not a hardening issue.
+```
+
+Note the citation on that second finding: lines 43 and 44, the two adjacent lines that *are* the vulnerability. An earlier version cited `os.environ.get("DEBUG")` 29 lines away, because the broad `untrusted-source` signal also matched `environ` and happened to appear first in the file. Excerpts now anchor on the most precise signal — decisive over required — then take the nearest hit for each other signal.
 
 ### What vetting looks like
 
@@ -210,7 +230,7 @@ Every reported gap carries the traits that made it applicable and the source lin
 
 ### Code is not data
 
-The interesting failure mode showed up when CodeIsotope was pointed at itself, four separate times:
+The interesting failure mode showed up when CodeIsotope was pointed at itself, five separate times:
 
 | What matched | Why it was wrong |
 |---|---|
@@ -218,10 +238,17 @@ The interesting failure mode showed up when CodeIsotope was pointed at itself, f
 | A JSDoc line mentioning "the local `gh` CLI login" | A keyless tool looked like it handles credentials |
 | "rate limit" inside the 30-line `HELP` template literal | Satisfied the rate-limiting signal from inside a string |
 | `"import express from 'express'"` in a test fixture | The tool declared itself an HTTP server |
+| `password: ['hash', 'kdf', 'crypto']` in a synonym table | An object key, read as credential handling |
 
 None of these is really about self-reference. Any project holding a table of package names, a set of lint rules, or a fixture of example payloads produces exactly the same false evidence.
 
 The fix is `src/gaps/mask.ts`, which splits each line into two views. Comments and multi-line template bodies are never evidence — prose describing a feature is not the feature. On top of that, signals meaning "this code calls X" match with string and regex bodies blanked, so a mention cannot pose as an implementation. Where both halves matter — `process.on('SIGTERM')` is only meaningful with the call *and* the argument — a signal declares one pattern against the code and another against the literals. Line lengths are preserved so column positions stay valid.
+
+Python needs its own masker (`src/gaps/mask-python.ts`) rather than a flag on that one, because three of its constructs have no JavaScript analogue:
+
+- **Docstrings.** A triple-quoted string is Python's documentation. Before this, a token finding cited `"""Create a session token."""` — the docstring, not the code beneath it.
+- **`#` comments**, which the JavaScript masker treats as live code.
+- **f-strings**, where the literal text is data but `{...}` holds real expressions. Blanking the whole string would hide `f"... {user_input}"` interpolation — which is exactly the SQL-injection signal most worth keeping. So the literal is blanked and the braces survive.
 
 `--fail-on high|medium|low` exits 3.
 
@@ -298,7 +325,9 @@ Two sources were tried and rejected. **pypistats.org** returns `429 RATE LIMIT E
 
 ## Detectors
 
-22 detectors, ordered so security and correctness findings surface first. Run `codeisotope detectors` for the full list with match rules.
+33 detectors, ordered so security and correctness findings surface first. Run `codeisotope detectors` for the full list with match rules and languages.
+
+**JavaScript / TypeScript — 22**
 
 **Security** — insecure random IDs, fast-hash password hashing, hand-rolled JWTs, ad-hoc input validation
 **Correctness** — CSV via `split(',')`, `JSON.parse(JSON.stringify())` clones, naive semver comparison, regex slugifiers, manual date formatting, query-string building
@@ -306,13 +335,33 @@ Two sources were tried and rejected. **pypistats.org** returns `429 RATE LIMIT E
 **Utilities** — deep equal, deep merge (prototype pollution), debounce/throttle, event emitters
 **Platform** — argv parsing, `.env` parsing, console-wrapper logging, recursive directory walks
 
-Each detector is anchored on a **required** signal that names the capability, so a bare `for` loop or `setTimeout` cannot trigger a finding on its own. A detector is also **suppressed entirely** when the project already depends on something that solves it — recommending `p-retry` to a project that already imports `p-retry` is noise, and the suppression is reported so you know it was considered.
+**Python — 11**
 
-Recommendations prefer platform built-ins over dependencies. If `structuredClone`, `URLSearchParams`, `crypto.randomUUID`, `util.parseArgs` or `fs.glob` covers the case, that is the answer — zero dependencies beats a good dependency.
+**Security** — SQL built by string formatting, tokens from `random`, sha256 password hashing, `pickle`/`yaml.load`/`eval` on untrusted data
+**Correctness** — `requests` without a timeout, CSV via `split(',')`, hand-parsed dates
+**Resilience** — retry with exponential backoff
+**Platform** — hand-parsed `argv`, hand-cast environment config, isinstance validation chains
+
+The Python set is **not a translation** of the JavaScript one. Its first three security detectors — SQL by f-string, `pickle.loads` on request data, tokens from `random` — are the ones that actually get Python services owned, and none has a JavaScript equivalent worth detecting. They are also registered first, ahead of everything else, because they are injection and remote-code-execution classes rather than hardening opportunities.
+
+Each detector is anchored on a **required** signal that names the capability, so a bare `for` loop or `setTimeout` cannot trigger a finding on its own. A detector is also **suppressed entirely** when the project already depends on something that solves it — recommending `p-retry` to a project that already imports `p-retry` is noise, and the suppression is reported so you know it was considered. Suppression is per-ecosystem: a Python detector naming `backoff` must not be silenced by an npm package of the same name, and `attrs`, `redis`, `six` and `mock` all exist on both registries as unrelated packages.
+
+Recommendations prefer platform built-ins over dependencies, and this matters more in Python than in JavaScript because the standard library is so much larger. Where `secrets`, `hashlib.scrypt`, `csv`, `argparse` or `datetime.fromisoformat` covers the case, the answer is to **delete code**, not add a dependency.
+
+### Two mechanisms the Python detectors needed
+
+Both were added because the first version accused correct code:
+
+- **`unless`** — signals that disqualify a finding. `requests.get(url)` is a defect *because* there is no `timeout=`, and with no way to express that, the detector flagged calls that passed one.
+- **`clusterWindow: 0`** — judge each line alone. A timeout is an argument of its own call, so with the default 60-line window a single correct call excused every incorrect one in the file.
+
+The same lesson appeared in the SQL detector: an early version counted `.execute(` as a signal, which fires on safe and unsafe calls alike, so `cursor.execute("... VALUES (%s)", (email,))` reached the threshold — flagging the exact parameterised form the detector exists to recommend. It now requires a SQL keyword *plus* an interpolation on the same line.
 
 ## Gaps
 
-Ten gaps, ordered by severity. Run `codeisotope gap-list` for each one's traits and match rules.
+18 gaps, ordered by severity. Run `codeisotope gap-list` for each one's traits, language and match rules.
+
+**JavaScript — 10**
 
 **Reliability** — graceful shutdown on SIGTERM, a handler for unhandled rejections, a health check endpoint
 **Security** — schema validation at the request boundary, HTTP security headers, rate limiting on auth routes
@@ -320,7 +369,34 @@ Ten gaps, ordered by severity. Run `codeisotope gap-list` for each one's traits 
 **Operability** — structured logging, environment-variable validation
 **Supply chain** — a committed lockfile
 
+**Python — 8**
+
+**Security** — `DEBUG` disabled outside development, schema validation at the request boundary
+**Reliability** — a production WSGI/ASGI server, a health check endpoint
+**Resilience** — timeouts on outbound HTTP calls
+**Operability** — structured logging, environment-variable validation
+**Supply chain** — pinned or locked dependencies
+
 The catalog is deliberately short. Every entry had to clear one bar: a competent reviewer, shown this against a project with the stated traits, would agree it is a real omission rather than a matter of taste. Anything that failed — "you have no tests", "you should use TypeScript", "add a CONTRIBUTING.md" — is absent on purpose. Those are opinions, and the whole claim of this tool is that it reports facts.
+
+### The same problem, a different answer per language
+
+Gaps are **scoped to one language**, because translating the advice would often make it wrong rather than merely unhelpful:
+
+- A Node service closes its own server on SIGTERM. A Flask app delegates that to gunicorn — so Python has a `py-no-production-server` gap and **no shutdown gap at all**, and the production-server entry explains why.
+- `helmet` is not a Python answer. `uv lock` is not a Node one.
+
+Two Python gaps have no JavaScript counterpart:
+
+- **`py-debug-enabled`** — `DEBUG = True` hardcoded. Flask then serves the Werkzeug debugger on any traceback, offering an interactive Python console to whoever triggered the error. That is remote code execution by design; Django's version leaks settings including credentials.
+- **`py-no-production-server`** — no gunicorn/uvicorn/waitress declared, so the app is presumably started with `app.run()`. A development server serves one request at a time and ignores SIGTERM.
+
+**Traits are attributed to the language that earned them**, which took a second attempt to get right. A repo with a Flask API and a React frontend earns `http-server` from Python and `javascript` from `package.json`; with one global trait set those combined into Node server advice, and a frontend with no server was told to add a SIGTERM handler and Helmet middleware:
+
+```
+before:  12 gaps — including no-graceful-shutdown, unhandled-rejection, no-security-headers
+after:    6 gaps — all Python
+```
 
 ## Development
 
@@ -329,7 +405,7 @@ Zero runtime dependencies, so `npx codeisotope` installs in under a second and c
 ```bash
 npm install
 npm run dev -- scan      # runs src/ directly via Node's native TypeScript support
-npm test                 # 122 tests, all offline
+npm test                 # 176 tests, all offline
 npm run typecheck
 npm run build
 ```
@@ -340,8 +416,16 @@ Requires Node 20.11+ **to run**; Node 22+ to develop, since the test suite is Ty
 
 ## Status
 
-v0.4.0. `audit`, `vet` and `reference` cover **npm, PyPI, crates.io and Go**; Ruby and Maven manifests are parsed and reported but not yet graded. `scan` and `gaps` remain JavaScript/TypeScript only.
+v0.5.0. Coverage by capability:
 
-All four capabilities from the original plan are in: replace hand-rolled code, flag weak dependencies, report missing infrastructure, and point at reference implementations. Next: `scan` detectors and `gaps` traits for Python, which is where most AI-written code actually lives.
+| | JavaScript / TypeScript | Python | Rust | Go |
+|---|---|---|---|---|
+| `scan` | 22 detectors | 11 detectors | — | — |
+| `gaps` | 10 gaps | 8 gaps | — | — |
+| `audit` / `vet` / `reference` | ✅ | ✅ | ✅ | ✅ |
+
+Ruby and Maven manifests are parsed and reported but not yet graded — they appear in `unresolved` with a reason, never silently as "clean".
+
+All four capabilities from the original plan are in: replace hand-rolled code, flag weak dependencies, report missing infrastructure, and point at reference implementations. Next: nobody has run this on a real codebase yet, and that matters more than the next feature — five of the last nine fixes came from pointing it at live registries rather than trusting the code.
 
 MIT.
