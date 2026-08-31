@@ -6,7 +6,8 @@ import { readManifests } from '../scan/manifests.ts';
 import { walkSource } from '../scan/walk.ts';
 import { GAPS } from './catalog.ts';
 import { GAP_SOURCE_EXT, type Gap, type GapEvidence } from './gap-types.ts';
-import { buildEvidence, readPackageShape } from './profile.ts';
+import { buildEvidence, readPackageShape, readPythonShape } from './profile.ts';
+import { PY_GAP_EXT } from './signals-python.ts';
 
 /**
  * Report what the project has no answer for at all.
@@ -32,15 +33,23 @@ type Outcome =
 
 /** Decide one gap against the evidence. Order matters: applicability first, then satisfaction. */
 export function evaluateGap(gap: Gap, evidence: GapEvidence): Outcome {
-  const matchedTraits = gap.appliesWhen.filter((t) => evidence.traits.has(t));
+  // A language-scoped gap is judged against that language's *own* traits. Using the global set
+  // meant a repo with a Flask API and a React frontend inherited `http-server` from Python and
+  // `javascript` from package.json, and was then told to add a Node SIGTERM handler to a project
+  // that has no Node server at all.
+  const traits = gap.language ? (evidence.traitsByLanguage.get(gap.language) ?? new Set()) : evidence.traits;
+  if (gap.language && !evidence.traits.has(gap.language)) return { kind: 'not-applicable' };
+
+  const matchedTraits = gap.appliesWhen.filter((t) => traits.has(t));
   if (matchedTraits.length === 0) return { kind: 'not-applicable' };
 
-  // Some gaps need a second, narrower piece of evidence on top of the trait -- a route alone does
-  // not mean you need rate limiting, but an auth route does.
-  if (gap.requiresSignals && !gap.requiresSignals.some((s) => evidence.sourceSignals.has(s))) {
-    return { kind: 'not-applicable' };
-  }
-
+  // Satisfaction is checked before `requiresSignals`, because a demonstrated solution is a more
+  // useful answer than "this does not apply to you".
+  //
+  // `py-debug-enabled` is the case that forced the order. Its `requiresSignals` is the hardcoded
+  // `debug=True` -- the requirement and the defect are the same signal -- so a project that
+  // correctly reads DEBUG from the environment failed the requirement and was filed as
+  // not-applicable, hiding the fact that it had done the right thing.
   const dep = gap.satisfiedByDeps?.find((d) => evidence.deps.has(d.toLowerCase()));
   if (dep) return { kind: 'satisfied', by: `depends on ${dep}` };
 
@@ -51,6 +60,12 @@ export function evaluateGap(gap: Gap, evidence: GapEvidence): Outcome {
   if (signal) {
     const site = evidence.signalSites.get(signal);
     return { kind: 'satisfied', by: site ? `handled at ${site.file}:${site.line}` : `handled in source (${signal})` };
+  }
+
+  // Some gaps need a second, narrower piece of evidence on top of the trait -- a route alone does
+  // not mean you need rate limiting, but an auth route does.
+  if (gap.requiresSignals && !gap.requiresSignals.some((s) => evidence.sourceSignals.has(s))) {
+    return { kind: 'not-applicable' };
   }
 
   return { kind: 'missing' };
@@ -81,7 +96,10 @@ export async function findGaps(root: string, opts: GapOptions = {}): Promise<Gap
   const notes: string[] = [];
 
   const manifests = await readManifests(root);
-  const { files, stats } = await walkSource(root, { maxFiles, extensions: new Set(GAP_SOURCE_EXT) });
+  const { files, stats } = await walkSource(root, {
+    maxFiles,
+    extensions: new Set([...GAP_SOURCE_EXT, ...PY_GAP_EXT]),
+  });
 
   let rootEntries: string[] = [];
   try {
@@ -97,13 +115,27 @@ export async function findGaps(root: string, opts: GapOptions = {}): Promise<Gap
     packageShape = undefined;
   }
 
-  const evidence = buildEvidence({ manifests, files, rootEntries, packageShape });
+  let pyproject: string | undefined;
+  try {
+    pyproject = await readFile(join(root, 'pyproject.toml'), 'utf8');
+  } catch {
+    pyproject = undefined;
+  }
+  const pythonShape = readPythonShape(pyproject, files);
+
+  const evidence = buildEvidence({
+    manifests,
+    files,
+    rootEntries,
+    ...(packageShape ? { packageShape } : {}),
+    ...(pythonShape ? { pythonShape } : {}),
+  });
 
   if (evidence.traits.size === 0) {
     notes.push('Could not establish what kind of project this is, so no gaps were evaluated. Gaps are only reported when there is positive evidence they apply.');
   }
   if (stats.files === 0) {
-    notes.push('No JavaScript or TypeScript source files were read; gap detection is JS/TS-only in this version.');
+    notes.push('No JavaScript, TypeScript or Python source files were read; gap detection covers those languages in this version.');
   }
 
   const missing: MissingCapability[] = [];
@@ -130,7 +162,10 @@ export async function findGaps(root: string, opts: GapOptions = {}): Promise<Gap
       capability: gap.capability,
       severity: gap.severity,
       why: gap.why,
-      becauseTraits: gap.appliesWhen.filter((t) => evidence.traits.has(t)),
+      // Cite the traits *this gap's language* earned, matching what evaluateGap actually tested.
+      becauseTraits: gap.appliesWhen.filter((t) =>
+        (gap.language ? (evidence.traitsByLanguage.get(gap.language) ?? new Set<string>()) : evidence.traits).has(t),
+      ),
       citations: citationsFor(gap, evidence),
       knownSolutions: gap.knownSolutions,
       searchTerms: gap.searchTerms,
