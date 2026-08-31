@@ -56,6 +56,62 @@ test('build tooling is not an implementation', () => {
   assert.deepEqual(rankFiles(files, 'csv parser'), []);
 });
 
+// --- Python conventions ----------------------------------------------------------------------
+
+test('a pytest test file is never offered as a reference implementation', () => {
+  // The real result before this: a query for "retry" against tenacity ranked test_retry.py first --
+  // a test file as the reference, teaching the reader the opposite of what they asked for. Every
+  // exclusion rule had been written for JavaScript, and pytest names tests `test_*.py` or
+  // `*_test.py`, never `*.test.py`.
+  const files = [
+    f('test_retry.py'),
+    f('tests/test_retry.py'),
+    f('retry_test.py'),
+    f('conftest.py'),
+  ];
+  assert.deepEqual(rankFiles(files, 'retry'), []);
+});
+
+test('Python packaging and task-runner files are not implementations', () => {
+  // The Python equivalent of a rollup config.
+  const files = [f('setup.py'), f('manage.py'), f('noxfile.py'), f('tasks.py'), f('wsgi.py'), f('conf.py')];
+  assert.deepEqual(rankFiles(files, 'setup manage config'), []);
+});
+
+test('a database migration is never a pattern to imitate', () => {
+  // Generated schema history. It matches a capability query by accident of naming.
+  const files = [f('pkg/migrations/0001_retry.py'), f('alembic/versions/abc_add_retry.py')];
+  assert.deepEqual(rankFiles(files, 'retry'), []);
+});
+
+test('a virtualenv or build artefact is not the library source', () => {
+  // `.venv` was already excluded by the dotfile rule; plain `venv` and the rest were not.
+  const files = [
+    f('venv/lib/python3.12/site-packages/urllib3/retry.py'),
+    f('env/lib/retry.py'),
+    f('__pycache__/retry.py'),
+    f('mypkg.egg-info/retry.py'),
+    f('src/retry.pyi'),
+  ];
+  assert.deepEqual(rankFiles(files, 'retry'), []);
+});
+
+test('the real Python implementation survives all of those exclusions', () => {
+  // The rules must not be so broad that they take the answer with them.
+  const ranked = rankFiles(
+    [f('tests/test_retry.py'), f('conftest.py'), f('setup.py'), f('tenacity/retry.py', 9_000)],
+    'retry',
+  );
+  assert.deepEqual(ranked.map((r) => r.path), ['tenacity/retry.py']);
+});
+
+test('__init__.py counts as a Python entry point', () => {
+  // In a single-purpose package it often *is* the implementation, and it is where a reader orients.
+  const ranked = rankFiles([f('pkg/__init__.py'), f('pkg/helpers.py')], 'retry backoff');
+  assert.deepEqual(ranked.map((r) => r.path), ['pkg/__init__.py']);
+  assert.ok(ranked[0]?.reasons.some((x) => /entry point/.test(x)));
+});
+
 // --- lib/ vs src/ --------------------------------------------------------------------------
 
 test('lib/ is skipped only when a src/ sits beside it', () => {

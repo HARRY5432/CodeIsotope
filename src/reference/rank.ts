@@ -19,6 +19,21 @@ const EXCLUDED = [
   /(^|\/)[\w.-]*\.config\.[cm]?[jt]s$/i,
   /(^|\/)(rollup|webpack|vite|esbuild|babel|jest|vitest|karma|gulpfile|gruntfile|tsup|rspack)[\w.-]*\.[cm]?[jt]s$/i,
   /(^|\/)\./,
+
+  // --- Python. Its conventions share almost nothing with JavaScript's, and the JS patterns above
+  // catch none of them: pytest names tests `test_*.py` or `*_test.py`, not `*.test.py`. Without
+  // these, a query for "retry" against tenacity ranked `test_retry.py` first -- a test file as the
+  // reference implementation, which teaches the reader the opposite of what they asked for.
+  /(^|\/)test_[\w.]+\.pyw?$/i,
+  /(^|\/)[\w.]+_test\.pyw?$/i,
+  /(^|\/)conftest\.pyw?$/i,
+  // Packaging and task runners, the Python equivalent of a rollup config.
+  /(^|\/)(setup|manage|noxfile|tasks|fabfile|wsgi|asgi|conf)\.pyw?$/i,
+  // A migration is generated schema history, never a pattern to imitate.
+  /(^|\/)(migrations|alembic|versions)\//i,
+  // Virtualenvs and build artefacts. `.venv` is caught by the dotfile rule, `venv` is not.
+  /(^|\/)(venv|env|site-packages|__pycache__|\.tox|\.nox|\.eggs|[\w.-]+\.egg-info)\//i,
+  /\.pyi$/,
 ];
 
 /**
@@ -34,8 +49,14 @@ const SRC_SEGMENT = /(^|\/)src\//i;
 /** Source extensions we are willing to point a reader at. */
 const SOURCE_EXT = /\.([cm]?[jt]sx?|mjs|cjs|py|go|rs|rb|java|kt|swift|cs|php)$/i;
 
-/** An entry point is where a reader should usually start. */
-const ENTRY_POINT = /(^|\/)(index|main|mod|lib)\.[cm]?[jt]sx?$/i;
+/**
+ * An entry point is where a reader should usually start.
+ *
+ * `__init__.py` is Python's: it is the module a consumer imports, and in a single-purpose package it
+ * often *is* the implementation. `__main__.py` is the CLI shim, which is a different thing, but
+ * still a reasonable place to orient.
+ */
+const ENTRY_POINT = /(^|\/)(index|main|mod|lib)\.[cm]?[jt]sx?$|(^|\/)__(init|main)__\.pyw?$/i;
 
 /** A workspace member directory in a monorepo: `packages/csv-parse/lib/index.js`. */
 const MONOREPO_MEMBER = /^(?:packages|libs?|modules|apps?|workspaces)\/([^/]+)\//i;
