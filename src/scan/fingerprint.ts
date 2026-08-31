@@ -38,11 +38,16 @@ export async function buildFingerprint(root: string, opts: ScanOptions = {}): Pr
 
   // A detector is suppressed when the project already depends on something that solves it --
   // recommending p-retry to a project that already imports p-retry is noise, not insight.
+  //
+  // Suppression is per-ecosystem. A Python detector naming `backoff` must not be silenced by an npm
+  // package of the same name, and there are real collisions: `attrs`, `redis`, `six` and `mock` all
+  // exist on both registries as unrelated packages.
   const suppressed: Fingerprint['suppressed'] = [];
   const activeIds = new Set<string>();
   for (const detector of DETECTORS) {
     if (only && !only.includes(detector.id)) continue;
-    const hit = detector.suppressIfDeps.find((name) => deps.all.has(name.toLowerCase()));
+    const installed = deps.byEcosystem.get(detector.ecosystem ?? 'npm') ?? new Set<string>();
+    const hit = detector.suppressIfDeps.find((name) => installed.has(name.toLowerCase()));
     if (hit && !includeSuppressed) {
       suppressed.push({ detectorId: detector.id, capability: detector.capability, reason: `already depends on ${hit}` });
       continue;

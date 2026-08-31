@@ -61,18 +61,41 @@ export async function readManifests(root: string): Promise<Manifest[]> {
   return found;
 }
 
-/** Flatten manifests into the dep-name sets used for detector suppression. */
-export function collectDependencyNames(manifests: Manifest[]): { direct: string[]; dev: string[]; all: Set<string> } {
+/**
+ * Flatten manifests into the dep-name sets used for detector suppression.
+ *
+ * `byEcosystem` is what suppression actually needs: a Python detector naming `backoff` must not be
+ * silenced because an npm package of the same name is installed. Real collisions exist -- `attrs`,
+ * `redis`, `six` and `mock` are all published on both npm and PyPI as unrelated packages.
+ */
+export function collectDependencyNames(manifests: Manifest[]): {
+  direct: string[];
+  dev: string[];
+  all: Set<string>;
+  byEcosystem: Map<Ecosystem, Set<string>>;
+} {
   const direct = new Set<string>();
   const dev = new Set<string>();
+  const byEcosystem = new Map<Ecosystem, Set<string>>();
+
   for (const m of manifests) {
-    for (const name of Object.keys(m.dependencies)) direct.add(name);
-    for (const name of Object.keys(m.devDependencies)) dev.add(name);
+    const bucket = byEcosystem.get(m.ecosystem) ?? new Set<string>();
+    for (const name of Object.keys(m.dependencies)) {
+      direct.add(name);
+      bucket.add(name.toLowerCase());
+    }
+    for (const name of Object.keys(m.devDependencies)) {
+      dev.add(name);
+      bucket.add(name.toLowerCase());
+    }
+    byEcosystem.set(m.ecosystem, bucket);
   }
+
   return {
     direct: [...direct].sort(),
     dev: [...dev].sort(),
     all: new Set([...direct, ...dev].map((n) => n.toLowerCase())),
+    byEcosystem,
   };
 }
 
