@@ -138,7 +138,14 @@ export const SOURCE_SIGNALS: SourceSignal[] = [
   // Requires a call or assignment, not a bare mention: a `login?: string` field on an API response
   // type is not evidence that this project authenticates anyone.
   { name: 'auth-vocab', re: /\b(signIn|signUp|logIn|logOut|authenticate|authorize|verifyToken|createSession|getSession|destroySession)\s*\(/, codeOnly: true },
-  { name: 'password-handling', re: /\b(password|passwd|passphrase)\s*[:=,)}\]]|\.\s*(password|passwd)\b/i, codeOnly: true },
+  {
+    // Requires the word to be *used as data*, not merely to appear as an object key.
+    // `password: ['hash', 'kdf']` in a synonym table is a lookup key, not credential handling, and
+    // that entry in src/reference/rank.ts made this tool report `auth` as a trait of itself.
+    name: 'password-handling',
+    re: /\b(password|passwd|passphrase)\s*[=,)}\]]|\.\s*(password|passwd|passphrase)\b|\b(hashPassword|verifyPassword|comparePassword|checkPassword)\s*\(/i,
+    codeOnly: true,
+  },
   {
     // A route whose *path* is an auth endpoint. This is the credential-stuffing target, and it is
     // far more reliable evidence than any function name -- the path is what an attacker POSTs to.

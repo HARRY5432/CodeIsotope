@@ -98,6 +98,19 @@ test('a real import still registers after the fixture fix', () => {
   assert.ok(express.re.test(subject) && (express.literalRe?.test(views[0]?.code ?? '') ?? true));
 });
 
+test('a word used as an object key is not credential handling', () => {
+  // `password: ['hash', 'kdf']` in a synonym table is a lookup key, and that exact line in
+  // src/reference/rank.ts made this tool report `auth` as a trait of itself.
+  const signal = SOURCE_SIGNALS.find((s) => s.name === 'password-handling');
+  assert.ok(signal);
+  const asKey = maskLiterals(`  password: ['hash', 'kdf', 'crypto'],`);
+  assert.ok(!signal.re.test(asKey), 'a synonym-table key is not evidence');
+
+  for (const real of ['const hash = hashPassword(password);', 'if (user.password === given) {', 'login(email, password);']) {
+    assert.ok(signal.re.test(maskLiterals(real)), `real credential handling missed: ${real}`);
+  }
+});
+
 test('every code-only signal survives masking of a real call site', () => {
   // Guards against a signal that can only ever match inside a string -- which would make it dead.
   const samples: Record<string, string> = {
