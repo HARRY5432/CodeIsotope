@@ -41,6 +41,56 @@ jobs:
 
       - run: node dist/cli.js gaps --json > /dev/null
 
+      # Python is half the detectors and half the gaps, and every CI fixture above is this
+      # repository -- which is TypeScript. Without this, a Python regression reaches a release.
+      - name: Scan a Python fixture
+        run: |
+          mkdir -p /tmp/pyfix
+          printf 'flask==3.0.0\nrequests==2.31.0\n' > /tmp/pyfix/requirements.txt
+          cat > /tmp/pyfix/app.py <<'PY'
+          import hashlib
+          import pickle
+          import random
+          import string
+          from flask import Flask, request
+
+          app = Flask(__name__)
+
+          @app.post("/login")
+          def login():
+              password = request.json["password"]
+              pw = hashlib.sha256(password.encode()).hexdigest()
+              token = "".join(random.choice(string.ascii_letters) for _ in range(32))
+              cur.execute(f"INSERT INTO users (pw) VALUES ('{pw}')")
+              state = pickle.loads(request.get_data())
+              return {"token": token}
+
+          app.run(debug=True)
+          PY
+          node dist/cli.js scan /tmp/pyfix --json > /tmp/scan.json
+          node dist/cli.js gaps /tmp/pyfix --json > /tmp/gaps.json
+          node -e "
+            const scan = JSON.parse(require('fs').readFileSync('/tmp/scan.json', 'utf8'));
+            const gaps = JSON.parse(require('fs').readFileSync('/tmp/gaps.json', 'utf8'));
+            const found = scan.candidates.map((c) => c.detectorId);
+            const missing = gaps.missing.map((m) => m.gapId);
+            console.log('scan:', found.join(', ') || '(none)');
+            console.log('gaps:', missing.join(', ') || '(none)');
+            const wantScan = ['py-sql-injection', 'py-insecure-random', 'py-password-hashing', 'py-unsafe-deserialize'];
+            for (const id of wantScan) {
+              if (!found.includes(id)) { console.error('MISSING scan detector: ' + id); process.exit(1); }
+            }
+            for (const id of ['py-debug-enabled', 'py-no-production-server']) {
+              if (!missing.includes(id)) { console.error('MISSING gap: ' + id); process.exit(1); }
+            }
+            // Cross-language isolation: a Python project must never receive JavaScript advice.
+            for (const id of missing) {
+              if (!id.startsWith('py-')) { console.error('JavaScript gap on a Python project: ' + id); process.exit(1); }
+            }
+            if (!gaps.profile.traits.includes('python')) { console.error('python trait not established'); process.exit(1); }
+            console.log('python fixture OK');
+          "
+
   # package.json declares node >=20.11, and what a consumer installs is the compiled dist/, not
   # the TypeScript sources. So the floor is verified against the published artefact: build it, then
   # run it. Running the .ts test suite here is impossible by design, not an omission.
