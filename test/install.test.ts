@@ -28,6 +28,18 @@ test('the prompt drives every capability the binary exposes', () => {
   }
 });
 
+test('the prompt names every language the binary understands', () => {
+  // Python support shipped in the binary before the prompt mentioned it, so a model following the
+  // installed instructions had no reason to expect Python findings.
+  const out = renderFor(TARGETS[0] as (typeof TARGETS)[number]);
+  for (const language of ['Python', 'JavaScript']) {
+    assert.ok(out.includes(language), `the prompt never mentions ${language}`);
+  }
+  // And it must warn against carrying advice across languages, which is the failure mode that
+  // matters: helmet is not a Python answer, gunicorn is not a Node one.
+  assert.match(out, /gunicorn/, 'the prompt should name the Python-specific server advice');
+});
+
 test('the Gemini TOML file is well formed', () => {
   const gemini = TARGETS.find((t) => t.key === 'gemini');
   assert.ok(gemini);

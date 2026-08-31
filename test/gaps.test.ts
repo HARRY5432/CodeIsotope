@@ -5,19 +5,38 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { GAPS, gapById } from '../src/gaps/catalog.ts';
 import { evaluateGap, findGaps, worstSeverity } from '../src/gaps/gaps.ts';
-import { SOURCE_SIGNALS, type GapEvidence } from '../src/gaps/gap-types.ts';
+import { SOURCE_SIGNALS, type GapEvidence, type Language, type Trait } from '../src/gaps/gap-types.ts';
 import { maskFileLines, maskLiterals } from '../src/gaps/mask.ts';
 import { buildEvidence, readPackageShape } from '../src/gaps/profile.ts';
+import { PY_SOURCE_SIGNALS } from '../src/gaps/signals-python.ts';
 
+/**
+ * Build gap evidence for a test.
+ *
+ * `traits` is mirrored into every language bucket unless `traitsByLanguage` is given explicitly.
+ * Language-scoped gaps are judged against their own language's traits, so a helper that left those
+ * buckets empty would make every scoped gap not-applicable and quietly pass its own assertions.
+ */
 function evidence(over: Partial<GapEvidence> = {}): GapEvidence {
+  const traits = over.traits ?? new Set<Trait>();
+  const scoped = over.traitsByLanguage !== undefined;
+  const mirrored =
+    over.traitsByLanguage ??
+    new Map<Language, Set<Trait>>([
+      ['javascript', new Set<Trait>([...traits, 'javascript'])],
+      ['python', new Set<Trait>([...traits, 'python'])],
+    ]);
   return {
-    traits: new Set(),
     deps: new Set(),
     rootFiles: new Set(),
     allFiles: new Set(),
     sourceSignals: new Set(),
     signalSites: new Map(),
     ...over,
+    // After the spread, or `...over` would put back the unmirrored traits and make every
+    // language-scoped gap not-applicable -- which would pass by accident, not by working.
+    traits: scoped ? traits : new Set<Trait>([...traits, 'javascript', 'python']),
+    traitsByLanguage: mirrored,
   };
 }
 
@@ -155,7 +174,7 @@ test('a gap with requiresSignals stays quiet until the narrower evidence appears
 });
 
 test('every gap in the catalog is reachable and self-consistent', () => {
-  const signalNames = new Set(SOURCE_SIGNALS.map((s) => s.name));
+  const signalNames = new Set([...SOURCE_SIGNALS, ...PY_SOURCE_SIGNALS].map((s) => s.name));
   const ids = new Set<string>();
   for (const gap of GAPS) {
     assert.ok(!ids.has(gap.id), `duplicate gap id ${gap.id}`);
@@ -165,6 +184,13 @@ test('every gap in the catalog is reachable and self-consistent', () => {
     assert.ok(gap.why.length > 80, `${gap.id} does not explain the concrete failure`);
     for (const s of [...(gap.requiresSignals ?? []), ...(gap.satisfiedBySignals ?? [])]) {
       assert.ok(signalNames.has(s), `${gap.id} references unknown signal "${s}"`);
+    }
+    // A gap that names no language would fire on every project regardless of what it is written in.
+    assert.ok(gap.language !== undefined, `${gap.id} is not scoped to a language`);
+    // Its signals must belong to that language's own set, or the scoping is decorative.
+    const own = new Set((gap.language === 'python' ? PY_SOURCE_SIGNALS : SOURCE_SIGNALS).map((s) => s.name));
+    for (const s of [...(gap.requiresSignals ?? []), ...(gap.satisfiedBySignals ?? [])]) {
+      assert.ok(own.has(s), `${gap.id} is ${gap.language} but references the other language's signal "${s}"`);
     }
   }
 });
