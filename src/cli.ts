@@ -190,7 +190,8 @@ async function main(): Promise<void> {
         return;
       }
       for (const gap of GAPS) {
-        process.stdout.write(`${gap.id.padEnd(26)} ${gap.severity.padEnd(7)} ${gap.capability}\n`);
+        const language = gap.language ? ` [${gap.language}]` : '';
+        process.stdout.write(`${gap.id.padEnd(26)} ${gap.severity.padEnd(7)} ${gap.capability}${language}\n`);
         process.stdout.write(`${''.padEnd(26)} applies when: ${gap.appliesWhen.join(', ')}\n`);
         if (gap.requiresSignals) {
           process.stdout.write(`${''.padEnd(26)} and also needs: ${gap.requiresSignals.join(' or ')}\n`);
@@ -247,7 +248,8 @@ async function main(): Promise<void> {
     case 'detectors': {
       if (values.json) {
         const list = DETECTORS.map((d) => ({
-          id: d.id, capability: d.capability, minSignals: d.minSignals,
+          id: d.id, capability: d.capability, ecosystem: d.ecosystem ?? 'npm',
+          ext: d.ext, minSignals: d.minSignals,
           signals: d.signals.map((s) => s.name), knownSolutions: d.knownSolutions,
           suppressIfDeps: d.suppressIfDeps, note: d.note ?? null,
         }));
@@ -255,7 +257,10 @@ async function main(): Promise<void> {
         return;
       }
       for (const d of DETECTORS) {
-        process.stdout.write(`${d.id.padEnd(24)} ${d.capability}\n`);
+        // Naming the language matters now that one capability has a detector per language: `csv
+        // parsing` appears twice, and the ids alone do not say which files each one reads.
+        const language = d.ext.includes('.py') ? 'python' : 'javascript';
+        process.stdout.write(`${d.id.padEnd(24)} ${d.capability} [${language}]\n`);
         process.stdout.write(`${''.padEnd(24)} signals: ${d.signals.map((s) => s.name).join(', ')} (need ${d.minSignals})\n`);
         process.stdout.write(`${''.padEnd(24)} solutions: ${d.knownSolutions.join(', ')}\n\n`);
       }
