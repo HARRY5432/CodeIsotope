@@ -3,7 +3,7 @@ import type { Ecosystem, PackageEvidence, ReferenceReport, ReferenceSource } fro
 import { TOOL_NAME, TOOL_VERSION } from '../lib/version.ts';
 import { gatherEvidence } from '../vet/evidence.ts';
 import { fetchRepoTree, isAuthenticated } from '../vet/github.ts';
-import { searchNpm } from '../vet/npm.ts';
+import { registryFor, supportedEcosystems } from '../vet/registries.ts';
 import { rankFiles } from './rank.ts';
 
 /**
@@ -110,16 +110,22 @@ export async function findReferences(query: string, opts: ReferenceOptions = {})
     includeUnhealthy = false,
   } = opts;
   const notes: string[] = [];
+  const registry = registryFor(ecosystem);
+
+  if (!registry) {
+    notes.push(`${ecosystem} packages cannot be referenced in this version. Supported: ${supportedEcosystems().join(', ')}.`);
+    return { tool: { name: TOOL_NAME, version: TOOL_VERSION }, query, generatedAt: new Date().toISOString(), sources: [], notes };
+  }
 
   let names: string[];
   if (packages && packages.length > 0) {
     names = packages;
   } else {
-    if (ecosystem !== 'npm') {
-      notes.push(`Search is npm-only in this version; pass ${ecosystem} packages explicitly with --package.`);
+    if (!registry.search) {
+      notes.push(`${registry.label} has no usable search API, so ${ecosystem} packages must be named with --package.`);
     }
-    const searched = ecosystem === 'npm' ? await searchNpm(query, Math.max(limit * 3, 8)) : [];
-    names = [...seeds, ...searched.map((s) => s.name)];
+    const searched = registry.search ? await registry.search(query, Math.max(limit * 3, 8)) : [];
+    names = [...seeds, ...searched];
   }
 
   const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))];

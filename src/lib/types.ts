@@ -146,7 +146,10 @@ export interface AuditedDep {
 export interface AuditReport {
   tool: { name: string; version: string };
   root: string;
+  /** The first manifest's ecosystem, kept for compatibility with single-language reports. */
   ecosystem: Ecosystem;
+  /** Every ecosystem present in the project. Polyglot repositories are the normal case. */
+  ecosystems: Ecosystem[];
   generatedAt: string;
   /** Counts by verdict, so CI can act without walking the list. */
   totals: { audited: number; healthy: number; aging: number; weak: number; replace: number };

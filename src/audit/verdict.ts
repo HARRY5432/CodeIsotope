@@ -73,7 +73,17 @@ export function classifyDep(evidence: PackageEvidence, kind: DepKind): ClassifyR
   const limits = STALE_DAYS[kind];
 
   if (days === undefined) {
-    if (!evidence.repo) {
+    // No readable repository. The maintenance signal has already fallen back to the registry's own
+    // publish date where one exists, so trust its verdict rather than reporting only "unverifiable"
+    // -- a package last released eleven years ago is not an unknown, it is abandoned.
+    const maintenance = evidence.health.signals.find((s) => s.label === 'Maintenance');
+    if (maintenance?.verdict === 'bad') {
+      reasons.push(maintenance.detail);
+      verdict = worst(verdict, kind === 'dev' ? 'weak' : 'replace');
+    } else if (maintenance?.verdict === 'weak') {
+      reasons.push(maintenance.detail);
+      verdict = worst(verdict, kind === 'dev' ? 'aging' : 'weak');
+    } else if (!evidence.repo) {
       reasons.push('no source repository linked, so maintenance cannot be verified');
       verdict = worst(verdict, 'weak');
     }

@@ -95,7 +95,10 @@ function renderDep(dep: AuditedDep): string[] {
   const out: string[] = [];
   const kind = dep.kind === 'dev' ? dim(' (dev)') : '';
   const grade = GRADE_COLOR[dep.evidence.health.grade](`${dep.evidence.health.grade} ${dep.evidence.health.score}/100`);
-  out.push(`  ${VERDICT_LABEL[dep.verdict]}  ${bold(dep.name)}${dim(`@${dep.range}`)}${kind}  ${grade}`);
+  // The ecosystem tag matters in a polyglot report: `redis` on npm and `redis` on PyPI are
+  // different packages, and without it the two entries are indistinguishable.
+  const eco = dim(` [${dep.evidence.ecosystem}]`);
+  out.push(`  ${VERDICT_LABEL[dep.verdict]}  ${bold(dep.name)}${dim(`@${dep.range}`)}${eco}${kind}  ${grade}`);
   for (const reason of dep.reasons) out.push(`            ${reason}`);
   if (dep.evidence.repo) out.push(dim(`            repo: ${dep.evidence.repo.url}`));
   if (dep.maintainerSuggestion) {
@@ -113,7 +116,10 @@ export function renderAuditReport(report: AuditReport): string {
   const out: string[] = [];
   const t = report.totals;
   out.push(bold('CodeIsotope audit'));
-  out.push(dim(`${t.audited} direct dependencies | ecosystem: ${report.ecosystem}`));
+  // Name every ecosystem present, not just the first manifest's: a polyglot report that claims one
+  // language is how the "all Go modules looked up on PyPI" bug hid in plain sight.
+  const ecosystems = report.ecosystems?.length ? report.ecosystems.join(', ') : report.ecosystem;
+  out.push(dim(`${t.audited} direct dependencies | ${report.ecosystems?.length > 1 ? 'ecosystems' : 'ecosystem'}: ${ecosystems}`));
   const summary = [
     t.replace > 0 ? red(`${t.replace} replace`) : '',
     t.weak > 0 ? red(`${t.weak} weak`) : '',

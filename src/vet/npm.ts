@@ -1,4 +1,5 @@
 import { mapLimit, tryJson } from '../lib/http.ts';
+import type { RegistryClient, RegistryFacts } from './registry.ts';
 
 const REGISTRY = 'https://registry.npmjs.org';
 const DOWNLOADS = 'https://api.npmjs.org';
@@ -113,3 +114,24 @@ export async function enrichNpmCandidates(candidates: NpmCandidate[]): Promise<N
     return merged;
   });
 }
+
+/** The npm registry as a generic RegistryClient, so evidence gathering can dispatch by ecosystem. */
+export const NPM_CLIENT: RegistryClient = {
+  ecosystem: 'npm',
+  label: 'npm',
+  async fetchPackage(name) {
+    const [manifest, weekly] = await Promise.all([fetchNpmPackage(name), fetchWeeklyDownloads(name)]);
+    if (!manifest) return undefined;
+    const facts: RegistryFacts = { name: manifest.name, license: manifest.license ?? null };
+    if (manifest.version) facts.version = manifest.version;
+    if (manifest.description) facts.description = manifest.description;
+    if (manifest.homepage) facts.homepage = manifest.homepage;
+    if (manifest.repoUrl) facts.repoUrl = manifest.repoUrl;
+    if (manifest.deprecated) facts.deprecated = manifest.deprecated;
+    if (weekly !== undefined) facts.downloads = { weekly };
+    return facts;
+  },
+  async search(query, size) {
+    return (await searchNpm(query, size)).map((c) => c.name);
+  },
+};
