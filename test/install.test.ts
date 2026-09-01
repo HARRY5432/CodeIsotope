@@ -23,9 +23,19 @@ test('the prompt drives every capability the binary exposes', () => {
   // A capability the binary has but the prompt never mentions is unreachable from the slash
   // command, which is how most people will use this. `gaps` shipped without this and was invisible.
   const out = renderFor(TARGETS[0] as (typeof TARGETS)[number]);
-  for (const command of ['scan', 'audit', 'gaps', 'vet', 'reference']) {
+  for (const command of ['scan', 'audit', 'gaps', 'vet', 'reference', 'verify']) {
     assert.ok(out.includes(`codeisotope ${command} `), `the prompt never runs \`codeisotope ${command}\``);
   }
+});
+
+test('the prompt requires the enforcement flags, not just the rules', () => {
+  // "Never recommend a package vet did not return" was fair criticism as a prompt: a prompt is not
+  // a contract. `--strict` and `verify` make it checkable, so the prompt has to actually use them
+  // or the enforcement is optional in practice.
+  const out = renderFor(TARGETS[0] as (typeof TARGETS)[number]);
+  assert.match(out, /vet[^\n]*--strict/, 'the prompt must pass --strict to vet');
+  assert.match(out, /codeisotope verify/, 'the prompt must know how to check a name it is unsure of');
+  assert.match(out, /WRONG REGISTRY/, 'the prompt must handle a cross-ecosystem name collision');
 });
 
 test('the prompt names every language the binary understands', () => {
