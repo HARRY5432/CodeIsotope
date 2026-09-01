@@ -62,6 +62,16 @@ export const PY_SOURCE_SIGNALS: SourceSignal[] = [
   // --- env ---
   { name: 'py-env-read', re: /\bos\s*\.\s*(?:environ\s*(?:\.\s*get\s*\(|\[)|getenv\s*\()/, codeOnly: true },
 
+  // --- command line ---
+  // A CLI does not have to declare itself in packaging. Most scripts never do: they parse argv and
+  // are run with `python tool.py`. Reading only [project.scripts] and __main__.py meant a Python
+  // tool with argparse in two files established no `cli` trait at all, so the lockfile gap -- which
+  // applies to library, cli and http-server -- stayed silent on a real CLI.
+  { name: 'py-argparse', re: /\bargparse\s*\.\s*ArgumentParser\s*\(|\badd_argument\s*\(|\bparse_args\s*\(/, codeOnly: true },
+  { name: 'py-cli-framework', re: /^\s*@\s*(?:click|typer|app)\s*\.\s*(?:command|group|argument|option|callback)\b|\bTyper\s*\(|\bclick\s*\.\s*(?:command|group)\s*\(/, codeOnly: true },
+  { name: 'py-argv-use', re: /\bsys\s*\.\s*argv\b/, codeOnly: true },
+  { name: 'py-stdin-prompt', re: /\binput\s*\(|\bsys\s*\.\s*stdin\b/, codeOnly: true },
+
   // --- things that SATISFY gaps ---
   {
     // Signal handling in Python is a call plus the signal name, same shape as process.on.

@@ -67,6 +67,19 @@ const SIGNAL_TRAITS: Array<{ signals: string[]; trait: Trait }> = [
   { signals: ['py-outbound-http'], trait: 'outbound-http' },
   { signals: ['py-worker'], trait: 'background-work' },
   { signals: ['py-env-read'], trait: 'reads-env' },
+  // A tool that parses arguments is a CLI whether or not packaging says so.
+  { signals: ['py-argparse', 'py-cli-framework'], trait: 'cli' },
+];
+
+/**
+ * Traits that need corroboration from a second signal before they count.
+ *
+ * `sys.argv` and `input()` are suggestive of a CLI but appear in plenty of things that are not one:
+ * a test harness reads argv, a migration script prompts for confirmation. Requiring a second
+ * independent signal keeps the trait honest without demanding a packaging declaration.
+ */
+const CORROBORATED_TRAITS: Array<{ signals: string[]; trait: Trait; language: Language; minimum: number }> = [
+  { signals: ['py-argv-use', 'py-stdin-prompt'], trait: 'cli', language: 'python', minimum: 2 },
 ];
 
 export interface PackageShape {
@@ -180,6 +193,10 @@ export function buildEvidence(input: ProfileInput): GapEvidence {
       if (!sourceSignals.has(s)) continue;
       add(trait, signalLanguage.get(s));
     }
+  }
+  for (const { signals, trait, language, minimum } of CORROBORATED_TRAITS) {
+    const hits = signals.filter((s) => sourceSignals.has(s)).length;
+    if (hits >= minimum) add(trait, language);
   }
 
   // A Python manifest is enough to establish the language even before any source is read: a project
