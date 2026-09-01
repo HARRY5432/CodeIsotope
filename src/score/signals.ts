@@ -164,13 +164,38 @@ export function adoptionSignal(
   return signal('Adoption', 20, 'bad', `${stars} stars -- essentially unproven`);
 }
 
+/**
+ * Concentration of commits among the top contributors.
+ *
+ * The naive reading of a high share is wrong for small projects, and it produced a real false
+ * positive: `tenacity` has two active maintainers and is perfectly healthy, but "top 3 are 83% of
+ * commits" scored it `weak`. With three contributors the top three are *by definition* 100% of
+ * commits -- the metric is measuring the sample size, not a risk.
+ *
+ * So concentration only means something once there are enough contributors for it to vary. Below
+ * that, the honest signal is the contributor count itself: one person is a genuine risk, two or
+ * three is a small team, and neither is inferable from a percentage.
+ */
 export function busFactorSignal(repo: RepoEvidence | undefined): HealthSignal {
   const share = repo?.contributors.busFactorTop3Share;
   const total = repo?.contributors.total;
   if (share === undefined) return signal('Bus factor', 15, 'unknown', 'contributor breakdown unavailable');
   const pct = Math.round(share * 100);
   const sample = total !== undefined ? ` (top ${total} contributors sampled)` : '';
-  if (total === 1) return signal('Bus factor', 15, 'bad', `a single contributor accounts for every commit${sample}`);
+
+  if (total === 1) {
+    return signal('Bus factor', 15, 'bad', `a single contributor accounts for every commit${sample}`);
+  }
+  // With four or fewer contributors, the top-3 share is arithmetic rather than evidence.
+  if (total !== undefined && total <= 4) {
+    return signal(
+      'Bus factor',
+      15,
+      'ok',
+      `${total} contributors, so the top-3 share is not meaningful -- a small team, not a concentration risk`,
+    );
+  }
+
   if (share <= 0.6) return signal('Bus factor', 15, 'good', `top 3 contributors are ${pct}% of commits${sample}`);
   if (share <= 0.85) return signal('Bus factor', 15, 'ok', `top 3 contributors are ${pct}% of commits${sample}`);
   return signal('Bus factor', 15, 'weak', `top 3 contributors are ${pct}% of commits -- concentrated ownership${sample}`);

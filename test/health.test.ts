@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { scoreHealth } from '../src/score/health.ts';
+import { busFactorSignal } from '../src/score/signals.ts';
 import type { RepoEvidence } from '../src/lib/types.ts';
 
 const DAY = 86_400_000;
@@ -80,6 +81,28 @@ test('a single maintainer is flagged even when everything else is fine', () => {
     weeklyDownloads: 2_000_000, license: 'MIT', scorecardScore: 8,
   });
   assert.ok(v.flags.includes('single-maintainer'));
+});
+
+test('a small team is not a concentration risk', () => {
+  // Real false positive: tenacity has two active maintainers and is perfectly healthy, but
+  // "top 3 contributors are 83% of commits" scored it weak. With three contributors the top three
+  // are by definition 100% of commits -- the metric was measuring sample size, not risk.
+  for (const total of [2, 3, 4]) {
+    const signal = busFactorSignal(repo({ contributors: { total, busFactorTop3Share: 1 } }));
+    assert.equal(signal.verdict, 'ok', `${total} contributors should not be weak`);
+    assert.match(signal.detail, /not meaningful/);
+  }
+});
+
+test('one contributor is still a genuine risk', () => {
+  const signal = busFactorSignal(repo({ contributors: { total: 1, busFactorTop3Share: 1 } }));
+  assert.equal(signal.verdict, 'bad');
+});
+
+test('concentration is judged once there are enough contributors for it to vary', () => {
+  assert.equal(busFactorSignal(repo({ contributors: { total: 12, busFactorTop3Share: 0.95 } })).verdict, 'weak');
+  assert.equal(busFactorSignal(repo({ contributors: { total: 12, busFactorTop3Share: 0.8 } })).verdict, 'ok');
+  assert.equal(busFactorSignal(repo({ contributors: { total: 12, busFactorTop3Share: 0.5 } })).verdict, 'good');
 });
 
 test('a missing license is treated as a hard problem', () => {
