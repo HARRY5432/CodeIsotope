@@ -82,6 +82,9 @@ codeisotope reference "retry exponential backoff jitter" --package p-retry
 codeisotope reference "csv parser quoted fields" --limit 2
 codeisotope reference "task scheduling" --package tokio --ecosystem cargo
 
+codeisotope verify undici p-retry            # does this name exist? exits 4 if not
+codeisotope vet "retry" --strict           # refuse to grade an invented name
+
 codeisotope detectors                 # list every detector and what it matches
 codeisotope gap-list                  # list every gap and the traits it applies to
 ```
@@ -299,8 +302,13 @@ Six weighted signals, 0–100:
 
 Two rules keep the number honest:
 
-- **Unknown signals are dropped from the average, not counted as failures.** A package with no OpenSSF Scorecard is not penalised for it — the gap is reported in `gaps` instead. Tools that score missing data as zero systematically punish smaller, perfectly good libraries.
+- **Unknown signals are dropped from the average, not counted as failures.** A package with no OpenSSF Scorecard has not failed a security check — it has an unpublished one. Tools that score missing data as zero systematically punish smaller, perfectly good libraries. The corollary: a missing signal is never *also* reported as a shortcoming, which an earlier version did — listing `no Scorecard published` as a gap while already excluding it from the maths counted the same absence twice.
 - **Hard problems cap the score outright.** Deprecated caps at 25, archived at 30, a known advisory at 40 — so no amount of popularity can bury them. `async-retry` has 31 million downloads a week and still lands at D, because its last commit was three years ago.
+
+**The weights are judgement, not measurement, and [docs/SCORING.md](docs/SCORING.md) says so in detail** — including which false positives have been found, the known tension in how caps collapse different problems to the same number, and what data would be needed to replace opinion with calibration. Two are fixed so far:
+
+- **Bus factor on a small team.** `tenacity` has two active maintainers and is healthy, but "top 3 contributors are 83% of commits" scored it `weak`. With three contributors the top three are *by definition* 100% of commits — the metric was measuring sample size, not risk. Four or fewer contributors now reports the count instead of a meaningless percentage.
+- **Grading a prerelease.** deps.dev flags httpx's `1.0.0.dev5` as default; it has 34 dependents against 38,576 for the stable `0.28.1`. That scored one of Python's most-used HTTP clients at F 33/100 with "modest adoption".
 
 `pushed_at` is deliberately *not* treated as a commit date. It counts pushes to any branch, so a Dependabot push to a side branch makes an abandoned repo look fresh. CodeIsotope reports the real default-branch commit history and says "last push to any branch" when that is all it has.
 
@@ -405,7 +413,7 @@ Zero runtime dependencies, so `npx codeisotope` installs in under a second and c
 ```bash
 npm install
 npm run dev -- scan      # runs src/ directly via Node's native TypeScript support
-npm test                 # 176 tests, all offline
+npm test                 # 206 tests, all offline
 npm run typecheck
 npm run build
 ```
@@ -416,7 +424,7 @@ Requires Node 20.11+ **to run**; Node 22+ to develop, since the test suite is Ty
 
 ## Status
 
-v0.5.0. Coverage by capability:
+v0.5.1. Coverage by capability:
 
 | | JavaScript / TypeScript | Python | Rust | Go |
 |---|---|---|---|---|

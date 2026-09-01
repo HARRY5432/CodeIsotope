@@ -3,6 +3,78 @@
 All notable changes to CodeIsotope. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-08-31
+
+Answers to outside criticism. Two bugs where the tool was **confidently wrong**, one unenforceable
+rule made enforceable, and the scoring judgement written down instead of hidden.
+
+### Fixed
+
+- **`vet` and `reference` defaulted to npm regardless of the project's language.** This was the worst
+  bug the tool has had, because it produced a wrong answer wearing a health card:
+
+  ```
+  $ codeisotope vet "retry" --package tenacity     # in a Python project
+    1. tenacity@1.0.4  F 18/100
+       Living Styleguide Generator                 <- an abandoned npm package
+  ```
+
+  The Python `tenacity` is a healthy B 84/100 with 4,010 dependents. Nothing in the output suggested
+  the registry might be wrong, and a graded card with signals and a licence reads as authoritative.
+
+  The ecosystem is now inferred from the project's own manifests. A project declaring two gradeable
+  ecosystems is an **error**, not a guess — merging results would have preserved the failure and hidden
+  it behind convenience. A near-empty `package.json` beside a real `requirements.txt` is not treated
+  as ambiguous, and the reasoning appears in the report's notes.
+
+- **A Python CLI was not recognised as a CLI.** Trait detection read only `[project.scripts]` and
+  `__main__.py`, so a tool with `argparse` in two files established no `cli` trait, and
+  `py-no-dependency-lockfile` — which applies to `library`, `cli` and `http-server` — stayed silent on
+  it. Most Python CLIs never declare packaging entry points; they parse argv and are run with
+  `python tool.py`.
+
+  `argparse`, `click` and `typer` now establish `cli` on their own. `sys.argv` and `input()` need two
+  corroborating signals, because a test harness reads argv and a migration script prompts for
+  confirmation.
+
+- **Bus factor misfired on small teams.** `tenacity` has two active maintainers and is perfectly
+  healthy, but "top 3 contributors are 83% of commits" scored it `weak`. With three contributors the
+  top three are *by definition* 100% of commits — the metric was measuring sample size, not risk.
+  Four or fewer contributors now reports the contributor count instead of a meaningless percentage.
+  One contributor is still `bad`.
+
+- **A missing OpenSSF Scorecard was counted twice.** It was excluded from the score average *and*
+  listed in `gaps` as a shortcoming of the package. Most small libraries have no Scorecard, and the
+  entire point of dropping unknown signals is to stop punishing them for a metric they never
+  published. It is now handled in one place.
+
+### Added
+
+- **`codeisotope verify <name>...`** — confirms a package name exists in an ecosystem, exiting 4 when
+  it does not. This turns the tool's central rule from an instruction into a contract. "Never
+  recommend a package that did not come back from `vet`" was fair criticism as a prompt, because a
+  prompt is not a check; existence is a fact the binary can settle in one request.
+
+  It distinguishes **INVENTED** (exists nowhere) from **WRONG REGISTRY** (exists, but in a different
+  ecosystem). Collapsing those would lose the information that explains the `tenacity` mistake.
+
+- **`vet --strict`** — refuses to grade a name the registry has no record of. Without it, an invented
+  name produced an F-graded card full of unknown signals, which reads as "a real but unhealthy
+  package" rather than as fiction. Rejected names appear in `notes` prefixed `REJECTED`.
+
+- **[docs/SCORING.md](docs/SCORING.md)** — the weights are judgement, not measurement, and this says
+  so with the reasoning for each one, the two false positives found so far, the known tension in caps
+  collapsing different problems to the same number, and the three studies that would replace opinion
+  with calibration. Shipped in the package, not only in the repo.
+
+### Changed
+
+- The installed prompt now *uses* the enforcement rather than restating the rule: it passes
+  `--strict`, knows `verify`, and handles a cross-registry name collision. A test asserts the prompt
+  keeps doing so, since the enforcement is optional in practice if the prompt stops asking for it.
+
+  27 new tests, 206 total, all offline.
+
 ## [0.5.0] - 2026-08-31
 
 `scan` and `gaps` now understand Python, which is where most AI-written code lives.
@@ -254,6 +326,7 @@ Initial release.
 
 - Zero runtime dependencies, so `npx` installs in under a second with no supply-chain surface.
 
+[0.5.1]: https://github.com/HARRY5432/CodeIsotope/releases/tag/v0.5.1
 [0.5.0]: https://github.com/HARRY5432/CodeIsotope/releases/tag/v0.5.0
 [0.4.0]: https://github.com/HARRY5432/CodeIsotope/releases/tag/v0.4.0
 [0.3.0]: https://github.com/HARRY5432/CodeIsotope/releases/tag/v0.3.0

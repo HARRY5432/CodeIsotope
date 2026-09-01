@@ -98,19 +98,30 @@ Two things to check before you report a gap:
 For each surviving scan candidate, each \`replace\`/\`weak\` dependency worth acting on, and each gap where a library is the right answer:
 
 \`\`\`
-npx --yes codeisotope vet "<capability>" --seed <knownSolution> --seed <knownSolution> --json
+npx --yes codeisotope vet "<capability>" --strict --seed <knownSolution> --seed <knownSolution> --json
 \`\`\`
 
-For a non-JavaScript project add \`--ecosystem pypi|cargo|go\`. PyPI and the Go proxy have no usable search API, so those must be named explicitly with \`--package\`; npm and crates.io can be searched from a query.
+**Always pass \`--strict\`.** It makes the binary refuse to grade a name the registry has never heard of, instead of returning an F-graded card full of unknown signals -- which reads as "a real but unhealthy package" rather than "this does not exist". Rejected names appear in \`notes\` prefixed \`REJECTED\`.
+
+The ecosystem is inferred from the project's own manifests, so a Python project gets PyPI without being told. A project declaring two gradeable ecosystems is an **error**, not a guess: pass \`--ecosystem\` to say which you mean. That refusal exists because guessing produced the worst wrong answer this tool has given -- \`tenacity\` on npm is an abandoned styleguide generator, unrelated to the Python retry library of the same name, and it was reported with a full health card.
 
 This returns real data for each package -- weekly downloads, dependent count, last commit, release cadence, contributor concentration, published advisories, licence, OpenSSF Scorecard -- plus a 0-100 health score and \`flags\`.
 
+If you are about to name a package for any other reason -- because you recall it, or because a detector's \`knownSolutions\` listed it -- confirm it first:
+
+\`\`\`
+npx --yes codeisotope verify <name> --json
+\`\`\`
+
+It exits 4 when a name cannot be confirmed, and distinguishes **INVENTED** (exists nowhere) from **WRONG REGISTRY** (exists, but in a different ecosystem than the one you are working in). Treat either as a refusal.
+
 Hard rules:
 
-- **Never recommend a package that did not come back from \`vet\`.** No exceptions, no recalling one from memory. If \`vet\` found nothing usable, say so.
+- **Never recommend a package that did not come back from \`vet\`.** No exceptions, no recalling one from memory. If \`vet\` found nothing usable, say so. This is now checkable rather than a matter of trust: \`codeisotope verify <name>\` exits 4 on a name that does not exist, and \`vet --strict\` refuses to grade one.
 - Never recommend anything flagged \`deprecated\`, \`archived\`, or \`known-vulnerability\`.
 - A \`@types/*\` package and a fork of the same abandoned codebase are not replacements. If the only candidates \`vet\` returns are those, report that no replacement was found.
-- If \`notes\` reports a platform built-in that covers the case (\`structuredClone\`, \`URLSearchParams\`, \`crypto.randomUUID\`, \`util.parseArgs\`, \`fs.glob\`), recommend that first. Zero dependencies beats a good dependency.
+- **Never carry a package name across ecosystems.** A name that exists on two registries is usually two unrelated projects. If \`verify\` reports WRONG REGISTRY, the name is wrong for this project regardless of how healthy the other one looks.
+- If \`notes\` reports a platform built-in that covers the case (\`structuredClone\`, \`URLSearchParams\`, \`crypto.randomUUID\`, \`util.parseArgs\`, \`fs.glob\`, or in Python \`secrets\`, \`hashlib.scrypt\`, \`csv\`, \`argparse\`), recommend that first. Zero dependencies beats a good dependency.
 - Several gaps are best closed with no dependency at all -- \`process.on("SIGTERM")\`, \`AbortSignal.timeout()\`, a route returning 200. Prefer those.
 - Prefer the highest health score, but say plainly when a lower-scored option is the better fit and why.
 

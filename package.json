@@ -1,6 +1,6 @@
 {
   "name": "codeisotope",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Finds the mature, battle-tested libraries your AI-written codebase reinvented by hand, grades the dependencies it already has, and reports what is missing. JavaScript, Python, Rust and Go.",
   "keywords": [
     "ai",
@@ -34,7 +34,9 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "docs"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
